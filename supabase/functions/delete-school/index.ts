@@ -49,8 +49,16 @@ Deno.serve(async (req) => {
       .from('schools').select('id, name').eq('id', school_id).single()
     if (schoolFetchErr || !school) return json({ error: 'École introuvable' }, 404)
 
-    // ── Suppression en cascade (ordre : enfants → parents) ──
-    // Les tables qui ont school_id comme FK
+    // ── ÉTAPE 1 : Récupérer les IDs auth AVANT toute suppression ──
+    // C'est critique : on récupère les IDs pendant que public.users existe encore
+    const { data: usersToDelete } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('school_id', school_id)
+
+    const authUserIds: string[] = usersToDelete?.map(u => u.id) ?? []
+
+    // ── ÉTAPE 2 : Supprimer les données métier en cascade ──
     const tables = [
       'grades',
       'paiements',
@@ -66,32 +74,41 @@ Deno.serve(async (req) => {
 
     for (const table of tables) {
       const { error } = await supabaseAdmin.from(table).delete().eq('school_id', school_id)
-      // On ignore les erreurs "table inexistante" (code 42P01) — on continue
+      // Ignorer les erreurs "table inexistante" (code 42P01)
       if (error && error.code !== '42P01') {
         console.error(`Erreur suppression ${table}:`, error.message)
       }
     }
 
-    // Récupérer les utilisateurs liés à cette école pour les supprimer de auth.users
-    const { data: users } = await supabaseAdmin
-      .from('users').select('id').eq('school_id', school_id)
-
-    if (users && users.length > 0) {
-      for (const u of users) {
-        await supabaseAdmin.auth.admin.deleteUser(u.id)
-      }
-    }
-
-    // Supprimer les profils users (au cas où la FK cascade n'est pas configurée)
+    // ── ÉTAPE 3 : Supprimer les profils dans public.users ──
     await supabaseAdmin.from('users').delete().eq('school_id', school_id)
 
-    // Supprimer l'école elle-même
-    const { error: deleteErr } = await supabaseAdmin.from('schools').delete().eq('id', school_id)
-    if (deleteErr) return json({ error: 'Erreur suppression école : ' + deleteErr.message }, 500)
+    // ── ÉTAPE 4 : Supprimer l'école elle-même ──
+    const { error: deleteEcoleErr } = await supabaseAdmin.from('schools').delete().eq('id', school_id)
+    if (deleteEcoleErr) return json({ error: 'Erreur suppression école : ' + deleteEcoleErr.message }, 500)
+
+    // ── ÉTAPE 5 : Supprimer les comptes auth.users EN DERNIER ──
+    // On fait ça après avoir supprimé public.users pour éviter les conflits de FK
+    const authDeleteResults = await Promise.allSettled(
+      authUserIds.map(uid => supabaseAdmin.auth.admin.deleteUser(uid))
+    )
+
+    // Logger les éventuels échecs sans bloquer la réponse
+    authDeleteResults.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        console.error(`Échec suppression auth user ${authUserIds[i]}:`, result.reason)
+      } else if (result.value.error) {
+        console.error(`Erreur auth user ${authUserIds[i]}:`, result.value.error.message)
+      }
+    })
+
+    const deletedCount = authDeleteResults.filter(r => r.status === 'fulfilled' && !r.value.error).length
 
     return json({
       success: true,
       message: `École "${school.name}" et toutes ses données supprimées.`,
+      auth_users_deleted: deletedCount,
+      auth_users_total: authUserIds.length,
     })
 
   } catch (err) {

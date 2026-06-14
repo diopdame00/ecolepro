@@ -1,0 +1,327 @@
+;!function(){try { var e="undefined"!=typeof globalThis?globalThis:"undefined"!=typeof global?global:"undefined"!=typeof window?window:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&((e._debugIds|| (e._debugIds={}))[n]="4a508537-0bd5-1ae1-9df7-1cea918a6ea7")}catch(e){}}();
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,420985,e=>{"use strict";var t=e.i(705541),r=e.i(964574),o=e.i(739114),a=e.i(984396),n=e.i(718727),i=e.i(234745);async function s({projectRef:e,payload:t},r){let{data:o,error:n}=await (0,i.put)("/platform/projects/{ref}/content",{params:{path:{ref:e}},body:(0,a.unmapSqlContentField)(t),headers:{Version:"2"},signal:r});return n&&(0,i.handleError)(n),o}e.s(["upsertContent",0,s,"useContentUpsertMutation",0,({onError:e,onSuccess:a,invalidateQueriesOnSuccess:i=!0,...l}={})=>{let d=(0,r.useQueryClient)();return(0,t.useMutation)({mutationFn:e=>s(e),async onSuccess(e,t,r){let{projectRef:o}=t;i&&await Promise.all([d.invalidateQueries({queryKey:n.contentKeys.allContentLists(o)}),d.invalidateQueries({queryKey:n.contentKeys.infiniteList(o)})]),await a?.(e,t,r)},async onError(t,r,a){void 0===e?o.toast.error(`Failed to insert content: ${t.message}`):e(t,r,a)},...l})}])},586011,e=>{"use strict";var t=e.i(705541),r=e.i(964574),o=e.i(739114),a=e.i(718727),n=e.i(234745);async function i({projectRef:e,ids:t},r){let{data:o,error:a}=await (0,n.del)("/platform/projects/{ref}/content",{headers:{Version:"2"},params:{path:{ref:e},query:{ids:t.join(",")}},signal:r});return a&&(0,n.handleError)(a),o.map(e=>e.id)}e.s(["useContentDeleteMutation",0,({onSuccess:e,onError:n,...s}={})=>{let l=(0,r.useQueryClient)();return(0,t.useMutation)({mutationFn:e=>i(e),async onSuccess(t,r,o){let{projectRef:n}=r;await Promise.all([l.invalidateQueries({queryKey:a.contentKeys.allContentLists(n)}),l.invalidateQueries({queryKey:a.contentKeys.infiniteList(n)})]),await e?.(t,r,o)},async onError(e,t,r){void 0===n?o.toast.error(`Failed to delete contents: ${e.message}`):n(e,t,r)},...s})}])},282492,e=>{"use strict";var t=e.i(221628);e.i(128328);var r=e.i(158639),o=e.i(802715),a=e.i(312062),n=e.i(169967),i=e.i(217553),s=e.i(231175),l=e.i(561978),d=e.i(896779),u=e.i(294742),c=e.i(416340),x=e.i(837710),f=e.i(843778),p=e.i(339434),m=e.i(767073),g=e.i(396831),b=e.i(613580),h=e.i(592383),v=e.i(72187),y=e.i(150671),w=e.i(940009),C=e.i(912793),j=e.i(10429),_=e.i(189329);e.s(["DatabaseSelector",0,({selectedDatabaseId:e,variant:N="regular",additionalOptions:k=[],onSelectId:R=o.default,buttonProps:S,align:M="end",className:I,isForm:z=!1})=>{let P=(0,d.useRouter)(),{ref:T}=(0,r.useParams)(),[E,D]=(0,c.useState)(!1),[,L]=(0,u.useQueryState)("showConnect",u.parseAsBoolean.withDefault(!1)),{infrastructureReadReplicas:$}=(0,C.useIsFeatureEnabled)(["infrastructure:read_replicas"]),A=(0,_.useDatabaseSelectorStateSnapshot)(),O=e??A.selectedDatabaseId,{data:G,isPending:F,isSuccess:H}=(0,y.useReadReplicasQuery)({projectRef:T}),q=G??[],K=q.sort((e,t)=>+(e.inserted_at>t.inserted_at)).sort(e=>e.identifier===T?-1:0),B=q.find(e=>e.identifier===O),Q=(0,w.formatDatabaseRegion)(B?.region??""),U=(0,w.formatDatabaseID)(O??""),W=k.find(e=>e.id===O),V=`/project/${T}/database/replication?type=Read+Replica`;return(0,c.useEffect)(()=>{e&&!z&&A.setSelectedDatabaseId(e)},[e]),(0,t.jsxs)(m.Popover,{open:E,onOpenChange:D,modal:!1,children:[(0,t.jsx)(m.PopoverTrigger,{asChild:!0,children:(0,t.jsxs)("div",{className:(0,f.cn)("flex cursor-pointer",I),children:[!z&&(0,t.jsx)("span",{className:"flex items-center text-foreground-lighter px-3 rounded-lg rounded-r-none text-xs border border-button border-r-0",children:"Source"}),(0,t.jsx)(x.Button,{type:"default",icon:F&&(0,t.jsx)(i.Loader2,{className:"animate-spin"}),iconRight:(0,t.jsx)(n.ChevronDown,{strokeWidth:1.5,size:12}),...S,className:(0,f.cn)("justify-start",!z&&"rounded-l-none","connected-on-right"===N&&"rounded-r-none","connected-on-left"===N&&"rounded-l-none border-l-0","connected-on-both"===N&&"rounded-none border-x-0",S?.className),children:W?(0,t.jsx)("span",{children:W.name}):(0,t.jsxs)(t.Fragment,{children:[(0,t.jsx)("span",{className:"capitalize",children:F||B?.identifier===T?"Primary database":"Read replica"})," ",H&&B?.identifier!==T&&(0,t.jsxs)("span",{children:["(",Q," - ",U,")"]})]})})]})}),(0,t.jsx)(m.PopoverContent,{className:"p-0 w-64",side:"bottom",align:M,children:(0,t.jsx)(p.Command,{children:(0,t.jsxs)(p.CommandList,{children:[k.length>0&&(0,t.jsx)(p.CommandGroup,{className:"border-b",children:k.map(e=>(0,t.jsx)(p.CommandItem,{value:e.id,className:"cursor-pointer w-full",onSelect:()=>{z||A.setSelectedDatabaseId(e.id),D(!1),R(e.id)},onClick:()=>{z||A.setSelectedDatabaseId(e.id),D(!1),R(e.id)},children:(0,t.jsxs)("div",{className:"w-full flex items-center justify-between",children:[(0,t.jsx)("p",{children:e.name}),e.id===O&&(0,t.jsx)(a.Check,{size:14})]})},e.id))}),(0,t.jsx)(p.CommandGroup,{children:(0,t.jsx)(g.ScrollArea,{className:(q||[]).length>7?"h-[210px]":"",children:K?.map(e=>{let r=(0,w.formatDatabaseRegion)(e.region),o=(0,w.formatDatabaseID)(e.identifier);if("ACTIVE_HEALTHY"!==e.status){let a=[v.REPLICA_STATUS.INIT_READ_REPLICA,v.REPLICA_STATUS.COMING_UP].includes(e.status)?"coming up":"not healthy";return(0,t.jsxs)(b.Tooltip,{children:[(0,t.jsx)(b.TooltipTrigger,{asChild:!0,children:(0,t.jsx)("div",{className:"px-2 py-1.5 w-full flex items-center justify-between",children:(0,t.jsxs)("p",{className:"text-xs text-foreground-lighter",children:["Read replica (",r," - ",o,")"]})})}),(0,t.jsx)(b.TooltipContent,{side:"right",className:"w-80",children:(0,t.jsx)(h.Markdown,{className:"text-xs text-foreground",content:`Replica unable to accept requests as its ${a}. [View infrastructure settings](/project/${T}/settings/infrastructure) for more information.`})})]},e.identifier)}return(0,t.jsx)(p.CommandItem,{value:e.identifier,className:"cursor-pointer w-full",onSelect:()=>{z||A.setSelectedDatabaseId(e.identifier),D(!1),R(e.identifier)},onClick:()=>{z||A.setSelectedDatabaseId(e.identifier),D(!1),R(e.identifier)},children:(0,t.jsxs)("div",{className:"w-full flex items-center justify-between",children:[(0,t.jsx)("p",{children:e.identifier===T?"Primary database":`Read replica (${r} - ${o})`}),e.identifier===O&&(0,t.jsx)(a.Check,{size:16})]})},e.identifier)})})}),j.IS_PLATFORM&&$&&(0,t.jsx)(p.CommandGroup,{className:"border-t",children:(0,t.jsx)(p.CommandItem,{className:"cursor-pointer w-full",onSelect:()=>{D(!1),P.push(V)},onClick:()=>D(!1),children:(0,t.jsxs)(l.default,{href:V,onClick:async()=>{D(!1),L(!1)},className:"w-full flex items-center gap-2",children:[(0,t.jsx)(s.Plus,{size:14,strokeWidth:1.5}),(0,t.jsx)("p",{children:"Create a new read replica"})]})})})]})})})]})}])},537087,e=>{"use strict";let t=(0,e.i(679709).default)("RefreshCw",[["path",{d:"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",key:"v9h5vc"}],["path",{d:"M21 3v5h-5",key:"1q7to0"}],["path",{d:"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",key:"3uifl3"}],["path",{d:"M8 16H3v5",key:"1cv678"}]]);e.s(["default",0,t])},573569,e=>{"use strict";var t=e.i(537087);e.s(["RefreshCw",()=>t.default])},202003,e=>{"use strict";e.s(["buildStudioPageTitle",0,e=>{let t=[e.entity,e.section,e.surface,e.project,e.org,e.brand],r=[];return t.forEach(e=>{let t=(e=>{if(void 0===e)return;let t=e.trim().replace(/\s+/g," ");if(0!==t.length)return t.length<=60?t:`${t.slice(0,59).trimEnd()}…`})(e);if(!t)return;let o=r[r.length-1];(void 0===o||o.toLowerCase()!==t.toLowerCase())&&r.push(t)}),r.join(" | ")}])},22194,e=>{"use strict";var t=e.i(221628);e.i(481541);var r=e.i(665265),r=r,o=e.i(188139),a=e.i(416340),n=e.i(843778);e.s(["ProfileImage",0,({alt:e,src:i,placeholder:s,className:l})=>{let[d,u]=(0,a.useState)(!1);return i&&!d?(0,t.jsx)(o.default,{alt:e??"",src:i,width:"24",height:"24",className:(0,n.cn)("aspect-square bg-foreground rounded-full object-cover",l),onError:()=>u(!0)}):s??(0,t.jsx)("figure",{className:(0,n.cn)("bg-foreground rounded-full flex items-center justify-center",l),children:(0,t.jsx)(r.default,{size:18,strokeWidth:1.5,className:"text-background"})})}],22194)},938933,e=>{"use strict";var t=e.i(416340);let r={bg:{brand:{primary:"bg-purple-600",secondary:"bg-purple-200"}},text:{brand:"text-purple-600",body:"text-foreground-light",title:"text-foreground"},border:{brand:"border-brand-600",primary:"border-default",secondary:"border-secondary",alternative:"border-alternative"},placeholder:"placeholder-foreground-muted",focus:`
+    outline-hidden
+    focus:ring-current focus:ring-2
+  `,"focus-visible":`
+    outline-hidden
+    transition-all
+    outline-0
+    focus-visible:outline-4
+    focus-visible:outline-offset-1
+  `,size:{text:{tiny:"text-xs",small:"text-base md:text-sm leading-4",medium:"text-base md:text-sm",large:"text-base",xlarge:"text-base"},padding:{tiny:"px-2.5 py-1",small:"px-3 py-2",medium:"px-4 py-2",large:"px-4 py-2",xlarge:"px-6 py-3"}},overlay:{base:"absolute inset-0 bg-background opacity-50",container:"fixed inset-0 transition-opacity"}},o={tiny:`${r.size.text.tiny} ${r.size.padding.tiny}`,small:`${r.size.text.small} ${r.size.padding.small}`,medium:`${r.size.text.medium} ${r.size.padding.medium}`,large:`${r.size.text.large} ${r.size.padding.large}`,xlarge:`${r.size.text.xlarge} ${r.size.padding.xlarge}`},a={card:{base:`
+      bg-surface-100
+
+      border
+      ${r.border.primary}
+
+      flex flex-col
+      rounded-md shadow-lg overflow-hidden relative
+    `,hoverable:"transition hover:-translate-y-1 hover:shadow-2xl",head:`px-8 py-6 flex justify-between
+    border-b
+      ${r.border.primary} `,content:"p-8"},tabs:{base:"w-full justify-between space-y-4",underlined:{list:`
+        flex items-center border-b
+        ${r.border.secondary}
+        `,base:`
+        relative
+        cursor-pointer
+        text-foreground-lighter
+        flex
+        items-center
+        space-x-2
+        text-center
+        transition
+        focus:outline-hidden
+        focus-visible:ring-3
+        focus-visible:ring-foreground-muted
+        focus-visible:border-foreground-muted
+      `,inactive:`
+        hover:text-foreground
+      `,active:`
+        !text-foreground
+        border-b-2 border-foreground
+      `},pills:{list:"flex space-x-1",base:`
+        relative
+        cursor-pointer
+        flex
+        items-center
+        space-x-2
+        text-center
+        transition
+        shadow-xs
+        rounded-sm
+        border
+        focus:outline-hidden
+        focus-visible:ring-3
+        focus-visible:ring-foreground-muted
+        focus-visible:border-foreground-muted
+        `,inactive:`
+        bg-background
+        border-strong hover:border-foreground-muted
+        text-foreground-muted hover:text-foreground
+      `,active:`
+        bg-selection
+        text-foreground
+        border-stronger
+      `},"rounded-pills":{list:"flex flex-wrap gap-2",base:`
+        relative
+        cursor-pointer
+        flex
+        items-center
+        space-x-2
+        text-center
+        transition
+        shadow-xs
+        rounded-full
+        focus:outline-hidden
+        focus-visible:ring-3
+        focus-visible:ring-foreground-muted
+        focus-visible:border-foreground-muted
+        `,inactive:`
+        bg-surface-200 hover:bg-surface-300
+        hover:border-foreground-lighter
+        text-foreground-lighter hover:text-foreground
+      `,active:`
+        bg-foreground
+        text-background
+        border-foreground
+      `},block:"w-full flex items-center justify-center",size:{...o},scrollable:"overflow-auto whitespace-nowrap no-scrollbar mask-fadeout-right",wrappable:"flex-wrap",content:"focus:outline-hidden transition-height"},input:{base:`
+      block
+      box-border
+      w-full
+      rounded-md
+      shadow-xs
+      transition-all
+      text-foreground
+      border
+      focus-visible:shadow-md
+      ${r.focus}
+      focus-visible:border-foreground-muted
+      focus-visible:ring-background-control
+      ${r.placeholder}
+      group
+    `,variants:{standard:`
+        bg-foreground/[.026]
+        border border-control
+        `,error:`
+        bg-destructive-200
+        border border-destructive-500
+        focus:ring-destructive-400
+        placeholder:text-destructive-400
+       `},container:"relative",with_icon:{tiny:"pl-7",small:"pl-8",medium:"pl-8",large:"pl-10",xlarge:"pl-11"},size:{...o},disabled:"opacity-50",actions_container:"absolute inset-y-0 right-0 pl-3 pr-1 flex space-x-1 items-center",textarea_actions_container:"absolute inset-y-1.5 right-0 pl-3 pr-1 flex space-x-1 items-start",textarea_actions_container_items:"flex items-center"},sidepanel:{base:`
+      z-50
+      bg-dash-sidebar
+      flex flex-col
+      fixed
+      inset-y-0
+      h-full lg:h-screen
+      border-l
+      shadow-xl
+    `,header:`
+      flex items-center
+      space-y-1 py-4 px-4 bg-dash-sidebar sm:px-6
+      border-b h-(--header-height)
+    `,contents:`
+      relative
+      flex-1
+      overflow-y-auto
+    `,content:`
+      px-4 sm:px-6
+    `,footer:`
+      flex justify-end gap-2
+      p-4 bg-overlay
+      border-t
+    `,size:{medium:"w-screen max-w-md h-full",large:"w-screen max-w-2xl h-full",xlarge:"w-screen max-w-3xl h-full",xxlarge:"w-screen max-w-4xl h-full",xxxlarge:"w-screen max-w-5xl h-full",xxxxlarge:"w-screen max-w-6xl h-full"},align:{left:`
+        left-0
+        data-open:animate-panel-slide-left-out
+        data-closed:animate-panel-slide-left-in
+      `,right:`
+        right-0
+        data-open:animate-panel-slide-right-out
+        data-closed:animate-panel-slide-right-in
+      `},separator:`
+      w-full
+      h-px
+      my-2
+      bg-border
+    `,overlay:`
+      z-50
+      fixed
+      bg-alternative
+      h-full w-full
+      left-0
+      top-0
+      opacity-75
+      data-closed:animate-fade-out-overlay-bg
+      data-open:animate-fade-in-overlay-bg
+    `,trigger:`
+      border-none bg-transparent p-0 focus:ring-0
+    `},form_layout:{container:"grid gap-2",flex:{left:{base:"flex flex-row gap-6",content:"",labels:"order-2",data_input:"order-1"},right:{base:"flex flex-row gap-6 justify-between",content:"order-last",labels:"",data_input:"text-right"}},responsive:"md:grid md:grid-cols-12",non_responsive:"grid grid-cols-12 gap-2",labels_horizontal_layout:"flex flex-row space-x-2 justify-between col-span-12",labels_vertical_layout:"flex flex-col space-y-2 col-span-4",data_input_horizontal_layout:"col-span-12",non_box_data_input_spacing_vertical:"my-3",non_box_data_input_spacing_horizontal:"my-3 md:mt-0 mb-3",data_input_vertical_layout:"col-span-8",data_input_vertical_layout__align_right:"text-right",label:{base:"block text-foreground-light",size:{...r.size.text}},label_optional:{base:"text-foreground-lighter",size:{...r.size.text}},description:{base:"mt-2 text-foreground-lighter leading-normal",size:{...r.size.text}},label_before:{base:"text-foreground-lighter ",size:{...r.size.text}},label_after:{base:"text-foreground-lighter",size:{...r.size.text}},error:{base:`
+        text-red-900
+        transition-all
+        data-show:mt-2
+        data-show:animate-slide-down-normal
+        data-hide:animate-slide-up-normal
+      `,size:{...r.size.text}},size:{tiny:"text-xs",small:"text-base md:text-sm leading-4",medium:"text-base md:text-sm",large:"text-base",xlarge:"text-base"}},menu:{item:{base:`
+        cursor-pointer
+        flex space-x-3 items-center
+        outline-hidden
+        focus-visible:ring-1 ring-foreground-muted focus-visible:z-10
+        group
+      `,content:{base:"transition truncate text-sm w-full",normal:"text-foreground-light group-hover:text-foreground",active:"text-foreground font-semibold"},icon:{base:"transition truncate text-sm",normal:"text-foreground-lighter group-hover:text-foreground-light",active:"text-foreground"},variants:{text:{base:`
+            py-1
+          `,normal:`
+            font-normal
+            border-default
+            group-hover:border-foreground-muted`,active:`
+            font-semibold
+            text-foreground-muted
+            z-10
+          `},border:{base:`
+            px-4 py-1
+          `,normal:`
+            border-l
+            font-normal
+            border-default
+            group-hover:border-foreground-muted`,active:`
+            font-semibold
+
+            text-foreground-muted
+            z-10
+
+            border-l
+            border-brand
+            group-hover:border-brand
+          `,rounded:"rounded-md"},pills:{base:"my-px px-3 py-[3px] rounded-md transition-colors active:bg-sidebar-accent/50",normal:`
+            font-normal
+            border-default
+            hover:bg-sidebar-accent/50
+            group-hover:border-foreground-muted`,active:`
+            font-semibold
+            bg-sidebar-accent
+            text-foreground-lighter
+            z-10 rounded-md
+          `}}},group:{base:`
+        flex space-x-3
+        mb-2
+        font-normal
+      `,icon:"text-foreground-lighter",content:"text-sm text-foreground-lighter w-full",variants:{text:"",pills:"px-3",border:""}}},modal:{base:`
+      relative
+      bg-dash-sidebar
+      my-4 max-w-screen
+      border border-overlay
+      rounded-md
+      shadow-xl
+      data-open:animate-overlay-show
+      data-closed:animate-overlay-hide
+
+    `,header:`
+      bg-surface-200
+      space-y-1 py-3 px-4 sm:px-5
+      border-b border-overlay
+      flex items-center justify-between
+    `,footer:`
+      flex justify-end gap-2
+      py-3 px-5
+      border-t border-overlay
+    `,size:{tiny:"sm:align-middle sm:w-full sm:max-w-xs",small:"sm:align-middle sm:w-full sm:max-w-sm",medium:"sm:align-middle sm:w-full sm:max-w-lg",large:"sm:align-middle sm:w-full md:max-w-xl",xlarge:"sm:align-middle sm:w-full md:max-w-3xl",xxlarge:"sm:align-middle sm:w-full max-w-screen md:max-w-6xl",xxxlarge:"sm:align-middle sm:w-full md:max-w-7xl"},overlay:`
+      z-40
+      fixed
+      bg-alternative
+      h-full w-full
+      left-0
+      top-0
+      opacity-75
+      data-closed:animate-fade-out-overlay-bg
+      data-open:animate-fade-in-overlay-bg
+    `,scroll_overlay:`
+      z-40
+      fixed
+      inset-0
+      grid
+      place-items-center
+      overflow-y-auto
+      data-open:animate-overlay-show data-closed:animate-overlay-hide
+    `,separator:`
+      w-full
+      h-px
+      my-2
+      bg-border-overlay
+    `,content:"px-5"},listbox:{base:`
+      block
+      box-border
+      w-full
+      rounded-md
+      shadow-xs
+      text-foreground
+      border
+      focus-visible:shadow-md
+      ${r.focus}
+      focus-visible:border-foreground-muted
+      focus-visible:ring-background-control
+      ${r.placeholder}
+      indent-px
+      transition-all
+      bg-none
+    `,container:"relative",label:"truncate",variants:{standard:`
+        bg-control
+        border border-control
+
+        aria-expanded:border-foreground-muted
+        aria-expanded:ring-border-muted
+        aria-expanded:ring-2
+        `,error:`
+        bg-destructive-200
+        border border-destructive-500
+        focus:ring-destructive-400
+        placeholder:text-destructive-400
+       `},options_container_animate:`
+      transition
+      data-open:animate-slide-down
+      data-open:opacity-1
+      data-closed:animate-slide-up
+      data-closed:opacity-0
+    `,options_container:`
+      bg-overlay
+      shadow-lg
+      border border-solid
+      border-overlay max-h-60
+      rounded-md py-1 text-base
+      sm:text-sm z-10 overflow-hidden overflow-y-scroll
+
+      origin-dropdown
+      data-open:animate-dropdown-content-show
+      data-closed:animate-dropdown-content-hide
+    `,with_icon:"pl-2",addOnBefore:`
+      w-full flex flex-row items-center space-x-3
+    `,size:{...o},disabled:"opacity-50",actions_container:"absolute inset-y-0 right-0 pl-3 pr-1 flex space-x-1 items-center",chevron_container:"absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none",chevron:"h-5 w-5 text-foreground-muted",option:`
+      w-listbox
+      transition cursor-pointer select-none relative py-2 pl-3 pr-9
+      text-foreground-light
+      text-sm
+      hover:bg-border-overlay
+      focus:bg-border-overlay
+      focus:text-foreground
+      border-none
+      focus:outline-hidden
+    `,option_active:"text-foreground bg-selection",option_disabled:"cursor-not-allowed opacity-60",option_inner:"flex items-center space-x-3",option_check:"absolute inset-y-0 right-0 flex items-center pr-3 text-brand",option_check_active:"text-brand",option_check_icon:"h-5 w-5"},inputErrorIcon:{base:`
+      flex items-center
+      right-3 pr-2 pl-2
+      inset-y-0
+      pointer-events-none
+      text-red-900
+    `},inputIconContainer:{base:`
+    absolute inset-y-0
+    left-0 pl-2 flex
+    items-center pointer-events-none
+    text-foreground-light
+    [&_svg]:stroke-[1.5]
+    `,size:{tiny:"[&_svg]:h-[14px] [&_svg]:w-[14px]",small:"[&_svg]:h-[18px] [&_svg]:w-[18px]",medium:"[&_svg]:h-[20px] [&_svg]:w-[20px]",large:"[&_svg]:h-[20px] [&_svg]:w-[20px] pl-3",xlarge:"[&_svg]:h-[24px] [&_svg]:w-[24px] pl-3",xxlarge:"[&_svg]:h-[30px] [&_svg]:w-[30px] pl-3",xxxlarge:"[&_svg]:h-[42px] [&_svg]:w-[42px] pl-3"}},icon:{container:"shrink-0 flex items-center justify-center rounded-full p-3"},loading:{base:"relative",content:{base:"transition-opacity duration-300",active:"opacity-40"},spinner:`
+      absolute
+      text-foreground-lighter animate-spin
+      inset-0
+      size-5
+      m-auto
+    `}},n=(0,t.createContext)({theme:a});e.s(["default",0,function(e){let{theme:{[e]:r}}=(0,t.useContext)(n);return JSON.parse(r=JSON.stringify(r).replace(/\\n/g,"").replace(/\s\s+/g," "))}],938933)},980533,e=>{"use strict";e.s(["getPathSegment",0,function(e,t){return e.split("/")[t]},"getPathnameWithoutQuery",0,function(e,t){return null==e?t:e.split(/[?#]/)[0]??t}])},237002,e=>{"use strict";var t=e.i(221628),r=e.i(416340),o=e.i(78892),a=e.i(608652),n=e.i(174617),i=e.i(199786),s=e.i(300792),l=e.i(692166),d=e.i(169525),u=e.i(600317),c="Checkbox",[x,f]=(0,a.createContextScope)(c),[p,m]=x(c);function g(e){let{__scopeCheckbox:o,checked:a,children:n,defaultChecked:s,disabled:l,form:d,name:u,onCheckedChange:x,required:f,value:m="on",internal_do_not_use_render:g}=e,[b,h]=(0,i.useControllableState)({prop:a,defaultProp:s??!1,onChange:x,caller:c}),[v,y]=r.useState(null),[w,C]=r.useState(null),j=r.useRef(!1),N=!v||!!d||!!v.closest("form"),k={checked:b,disabled:l,setChecked:h,control:v,setControl:y,name:u,form:d,value:m,hasConsumerStoppedPropagationRef:j,required:f,defaultChecked:!_(s)&&s,isFormControl:N,bubbleInput:w,setBubbleInput:C};return(0,t.jsx)(p,{scope:o,...k,children:"function"==typeof g?g(k):n})}var b="CheckboxTrigger",h=r.forwardRef(({__scopeCheckbox:e,onKeyDown:a,onClick:i,...s},l)=>{let{control:d,value:c,disabled:x,checked:f,required:p,setControl:g,setChecked:h,hasConsumerStoppedPropagationRef:v,isFormControl:y,bubbleInput:w}=m(b,e),C=(0,o.useComposedRefs)(l,g),j=r.useRef(f);return r.useEffect(()=>{let e=d?.form;if(e){let t=()=>h(j.current);return e.addEventListener("reset",t),()=>e.removeEventListener("reset",t)}},[d,h]),(0,t.jsx)(u.Primitive.button,{type:"button",role:"checkbox","aria-checked":_(f)?"mixed":f,"aria-required":p,"data-state":N(f),"data-disabled":x?"":void 0,disabled:x,value:c,...s,ref:C,onKeyDown:(0,n.composeEventHandlers)(a,e=>{"Enter"===e.key&&e.preventDefault()}),onClick:(0,n.composeEventHandlers)(i,e=>{h(e=>!!_(e)||!e),w&&y&&(v.current=e.isPropagationStopped(),v.current||e.stopPropagation())})})});h.displayName=b;var v=r.forwardRef((e,r)=>{let{__scopeCheckbox:o,name:a,checked:n,defaultChecked:i,required:s,disabled:l,value:d,onCheckedChange:u,form:c,...x}=e;return(0,t.jsx)(g,{__scopeCheckbox:o,checked:n,defaultChecked:i,disabled:l,required:s,onCheckedChange:u,name:a,form:c,value:d,internal_do_not_use_render:({isFormControl:e})=>(0,t.jsxs)(t.Fragment,{children:[(0,t.jsx)(h,{...x,ref:r,__scopeCheckbox:o}),e&&(0,t.jsx)(j,{__scopeCheckbox:o})]})})});v.displayName=c;var y="CheckboxIndicator",w=r.forwardRef((e,r)=>{let{__scopeCheckbox:o,forceMount:a,...n}=e,i=m(y,o);return(0,t.jsx)(d.Presence,{present:a||_(i.checked)||!0===i.checked,children:(0,t.jsx)(u.Primitive.span,{"data-state":N(i.checked),"data-disabled":i.disabled?"":void 0,...n,ref:r,style:{pointerEvents:"none",...e.style}})})});w.displayName=y;var C="CheckboxBubbleInput",j=r.forwardRef(({__scopeCheckbox:e,...a},n)=>{let{control:i,hasConsumerStoppedPropagationRef:d,checked:c,defaultChecked:x,required:f,disabled:p,name:g,value:b,form:h,bubbleInput:v,setBubbleInput:y}=m(C,e),w=(0,o.useComposedRefs)(n,y),j=(0,s.usePrevious)(c),N=(0,l.useSize)(i);r.useEffect(()=>{if(!v)return;let e=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"checked").set,t=!d.current;if(j!==c&&e){let r=new Event("click",{bubbles:t});v.indeterminate=_(c),e.call(v,!_(c)&&c),v.dispatchEvent(r)}},[v,j,c,d]);let k=r.useRef(!_(c)&&c);return(0,t.jsx)(u.Primitive.input,{type:"checkbox","aria-hidden":!0,defaultChecked:x??k.current,required:f,disabled:p,name:g,value:b,form:h,...a,tabIndex:-1,ref:w,style:{...a.style,...N,position:"absolute",pointerEvents:"none",opacity:0,margin:0,transform:"translateX(-100%)"}})});function _(e){return"indeterminate"===e}function N(e){return _(e)?"indeterminate":e?"checked":"unchecked"}j.displayName=C,e.s(["Checkbox",0,v,"CheckboxIndicator",0,w,"Indicator",0,w,"Root",0,v,"createCheckboxScope",0,f,"unstable_BubbleInput",0,j,"unstable_CheckboxBubbleInput",0,j,"unstable_CheckboxProvider",0,g,"unstable_CheckboxTrigger",0,h,"unstable_Provider",0,g,"unstable_Trigger",0,h],836157);var k=e.i(836157),k=k,R=e.i(312062),S=e.i(843778);let M=r.forwardRef(({className:e,...r},o)=>(0,t.jsx)(k.Root,{ref:o,className:(0,S.cn)("peer flex items-center justify-center h-4 w-4 shrink-0 rounded-sm border border-control bg-control/25 ring-offset-background","transition-colors duration-150 ease-in-out","hover:border-strong","focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2","disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-foreground data-[state=checked]:text-background",e),...r,children:(0,t.jsx)(k.Indicator,{className:(0,S.cn)("flex items-center justify-center text-current"),children:(0,t.jsx)(R.Check,{className:"h-3 w-3 text-background",strokeWidth:4})})}));M.displayName=k.Root.displayName,e.s(["Checkbox",0,M],237002)},680744,e=>{"use strict";let t=(0,e.i(679709).default)("SquarePen",[["path",{d:"M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7",key:"1m0v6g"}],["path",{d:"M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z",key:"ohrbg2"}]]);e.s(["Edit",0,t],680744)},81798,e=>{"use strict";var t=e.i(221628),r=e.i(416340),o=e.i(174617),a=e.i(608652),n=e.i(600317),i=e.i(686273),s=e.i(886449),l=e.i(199786),d="ContextMenu",[u,c]=(0,a.createContextScope)(d,[i.createMenuScope]),x=(0,i.createMenuScope)(),[f,p]=u(d),m=e=>{let{__scopeContextMenu:o,children:a,onOpenChange:n,dir:l,modal:d=!0}=e,[u,c]=r.useState(!1),p=x(o),m=(0,s.useCallbackRef)(n),g=r.useCallback(e=>{c(e),m(e)},[m]);return(0,t.jsx)(f,{scope:o,open:u,onOpenChange:g,modal:d,children:(0,t.jsx)(i.Root,{...p,dir:l,open:u,onOpenChange:g,modal:d,children:a})})};m.displayName=d;var g="ContextMenuTrigger",b=r.forwardRef((e,a)=>{let{__scopeContextMenu:s,disabled:l=!1,...d}=e,u=p(g,s),c=x(s),f=r.useRef({x:0,y:0}),m=r.useRef({getBoundingClientRect:()=>DOMRect.fromRect({width:0,height:0,...f.current})}),b=r.useRef(0),h=r.useCallback(()=>window.clearTimeout(b.current),[]),v=e=>{f.current={x:e.clientX,y:e.clientY},u.onOpenChange(!0)};return r.useEffect(()=>h,[h]),r.useEffect(()=>void(l&&h()),[l,h]),(0,t.jsxs)(t.Fragment,{children:[(0,t.jsx)(i.Anchor,{...c,virtualRef:m}),(0,t.jsx)(n.Primitive.span,{"data-state":u.open?"open":"closed","data-disabled":l?"":void 0,...d,ref:a,style:{WebkitTouchCallout:"none",...e.style},onContextMenu:l?e.onContextMenu:(0,o.composeEventHandlers)(e.onContextMenu,e=>{h(),v(e),e.preventDefault()}),onPointerDown:l?e.onPointerDown:(0,o.composeEventHandlers)(e.onPointerDown,E(e=>{h(),b.current=window.setTimeout(()=>v(e),700)})),onPointerMove:l?e.onPointerMove:(0,o.composeEventHandlers)(e.onPointerMove,E(h)),onPointerCancel:l?e.onPointerCancel:(0,o.composeEventHandlers)(e.onPointerCancel,E(h)),onPointerUp:l?e.onPointerUp:(0,o.composeEventHandlers)(e.onPointerUp,E(h))})]})});b.displayName=g;var h=e=>{let{__scopeContextMenu:r,...o}=e,a=x(r);return(0,t.jsx)(i.Portal,{...a,...o})};h.displayName="ContextMenuPortal";var v="ContextMenuContent",y=r.forwardRef((e,o)=>{let{__scopeContextMenu:a,...n}=e,s=p(v,a),l=x(a),d=r.useRef(!1);return(0,t.jsx)(i.Content,{...l,...n,ref:o,side:"right",sideOffset:2,align:"start",onCloseAutoFocus:t=>{e.onCloseAutoFocus?.(t),!t.defaultPrevented&&d.current&&t.preventDefault(),d.current=!1},onInteractOutside:t=>{e.onInteractOutside?.(t),t.defaultPrevented||s.modal||(d.current=!0)},style:{...e.style,"--radix-context-menu-content-transform-origin":"var(--radix-popper-transform-origin)","--radix-context-menu-content-available-width":"var(--radix-popper-available-width)","--radix-context-menu-content-available-height":"var(--radix-popper-available-height)","--radix-context-menu-trigger-width":"var(--radix-popper-anchor-width)","--radix-context-menu-trigger-height":"var(--radix-popper-anchor-height)"}})});y.displayName=v;var w=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.Group,{...n,...a,ref:r})});w.displayName="ContextMenuGroup";var C=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.Label,{...n,...a,ref:r})});C.displayName="ContextMenuLabel";var j=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.Item,{...n,...a,ref:r})});j.displayName="ContextMenuItem";var _=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.CheckboxItem,{...n,...a,ref:r})});_.displayName="ContextMenuCheckboxItem";var N=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.RadioGroup,{...n,...a,ref:r})});N.displayName="ContextMenuRadioGroup";var k=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.RadioItem,{...n,...a,ref:r})});k.displayName="ContextMenuRadioItem";var R=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.ItemIndicator,{...n,...a,ref:r})});R.displayName="ContextMenuItemIndicator";var S=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.Separator,{...n,...a,ref:r})});S.displayName="ContextMenuSeparator";var M=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.Arrow,{...n,...a,ref:r})});M.displayName="ContextMenuArrow";var I="ContextMenuSub",z=e=>{let{__scopeContextMenu:r,children:o,onOpenChange:a,open:n,defaultOpen:s}=e,d=x(r),[u,c]=(0,l.useControllableState)({prop:n,defaultProp:s??!1,onChange:a,caller:I});return(0,t.jsx)(i.Sub,{...d,open:u,onOpenChange:c,children:o})};z.displayName=I;var P=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.SubTrigger,{...n,...a,ref:r})});P.displayName="ContextMenuSubTrigger";var T=r.forwardRef((e,r)=>{let{__scopeContextMenu:o,...a}=e,n=x(o);return(0,t.jsx)(i.SubContent,{...n,...a,ref:r,style:{...e.style,"--radix-context-menu-content-transform-origin":"var(--radix-popper-transform-origin)","--radix-context-menu-content-available-width":"var(--radix-popper-available-width)","--radix-context-menu-content-available-height":"var(--radix-popper-available-height)","--radix-context-menu-trigger-width":"var(--radix-popper-anchor-width)","--radix-context-menu-trigger-height":"var(--radix-popper-anchor-height)"}})});function E(e){return t=>"mouse"!==t.pointerType?e(t):void 0}T.displayName="ContextMenuSubContent",e.s(["Arrow",0,M,"CheckboxItem",0,_,"Content",0,y,"ContextMenu",0,m,"ContextMenuArrow",0,M,"ContextMenuCheckboxItem",0,_,"ContextMenuContent",0,y,"ContextMenuGroup",0,w,"ContextMenuItem",0,j,"ContextMenuItemIndicator",0,R,"ContextMenuLabel",0,C,"ContextMenuPortal",0,h,"ContextMenuRadioGroup",0,N,"ContextMenuRadioItem",0,k,"ContextMenuSeparator",0,S,"ContextMenuSub",0,z,"ContextMenuSubContent",0,T,"ContextMenuSubTrigger",0,P,"ContextMenuTrigger",0,b,"Group",0,w,"Item",0,j,"ItemIndicator",0,R,"Label",0,C,"Portal",0,h,"RadioGroup",0,N,"RadioItem",0,k,"Root",0,m,"Separator",0,S,"Sub",0,z,"SubContent",0,T,"SubTrigger",0,P,"Trigger",0,b,"createContextMenuScope",0,c],61148);var D=e.i(61148),D=D,L=e.i(312062),$=e.i(72951),A=e.i(350362),O=e.i(843778);let G=D.Root,F=D.Trigger,H=D.Group,q=D.Portal,K=D.Sub,B=D.RadioGroup,Q=r.forwardRef(({className:e,inset:r,children:o,...a},n)=>(0,t.jsxs)(D.SubTrigger,{ref:n,className:(0,O.cn)("flex cursor-default select-none items-center rounded-xs px-2 py-1.5 text-xs outline-hidden focus:bg-selection focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",r&&"pl-8",e),...a,children:[o,(0,t.jsx)($.ChevronRight,{className:"ml-auto h-4 w-4"})]}));Q.displayName=D.SubTrigger.displayName;let U=r.forwardRef(({className:e,...r},o)=>(0,t.jsx)(D.SubContent,{ref:o,className:(0,O.cn)("z-50 min-w-32 overflow-hidden rounded-md border bg-overlay p-1 text-foreground-light shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",e),...r}));U.displayName=D.SubContent.displayName;let W=r.forwardRef(({className:e,...r},o)=>(0,t.jsx)(D.Portal,{children:(0,t.jsx)(D.Content,{ref:o,className:(0,O.cn)("z-50 min-w-32 overflow-hidden rounded-md border bg-overlay p-1 text-foreground-light shadow-md animate-in fade-in-80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",e),...r})}));W.displayName=D.Content.displayName;let V=r.forwardRef(({className:e,inset:r,...o},a)=>(0,t.jsx)(D.Item,{ref:a,className:(0,O.cn)("relative flex cursor-pointer select-none items-center rounded-xs px-2 py-1.5 text-xs outline-hidden focus:bg-selection focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50",r&&"pl-8",e),...o}));V.displayName=D.Item.displayName;let J=r.forwardRef(({className:e,children:r,checked:o,...a},n)=>(0,t.jsxs)(D.CheckboxItem,{ref:n,className:(0,O.cn)("relative flex cursor-default select-none items-center rounded-xs py-1.5 pl-8 pr-2 text-xs outline-hidden focus:bg-selection focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50",e),checked:o,...a,children:[(0,t.jsx)("span",{className:"absolute left-2 flex h-3.5 w-3.5 items-center justify-center",children:(0,t.jsx)(D.ItemIndicator,{children:(0,t.jsx)(L.Check,{className:"h-4 w-4"})})}),r]}));J.displayName=D.CheckboxItem.displayName;let X=r.forwardRef(({className:e,children:r,...o},a)=>(0,t.jsxs)(D.RadioItem,{ref:a,className:(0,O.cn)("relative flex cursor-default select-none items-center rounded-xs py-1.5 pl-8 pr-2 text-xs outline-hidden focus:bg-selection focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50",e),...o,children:[(0,t.jsx)("span",{className:"absolute left-2 flex h-3.5 w-3.5 items-center justify-center",children:(0,t.jsx)(D.ItemIndicator,{children:(0,t.jsx)(A.Circle,{className:"h-2 w-2 fill-current"})})}),r]}));X.displayName=D.RadioItem.displayName;let Y=r.forwardRef(({className:e,inset:r,...o},a)=>(0,t.jsx)(D.Label,{ref:a,className:(0,O.cn)("px-2 py-1.5 text-xs text-foreground-light",r&&"pl-8",e),...o}));Y.displayName=D.Label.displayName;let Z=r.forwardRef(({className:e,...r},o)=>(0,t.jsx)(D.Separator,{ref:o,className:(0,O.cn)("-mx-1 my-1 h-px bg-border",e),...r}));Z.displayName=D.Separator.displayName;let ee=({className:e,...r})=>(0,t.jsx)("span",{className:(0,O.cn)("ml-auto text-xs tracking-widest text-muted-foreground",e),...r});ee.displayName="ContextMenuShortcut",e.s(["ContextMenu",0,G,"ContextMenuCheckboxItem",0,J,"ContextMenuContent",0,W,"ContextMenuGroup",0,H,"ContextMenuItem",0,V,"ContextMenuLabel",0,Y,"ContextMenuPortal",0,q,"ContextMenuRadioGroup",0,B,"ContextMenuRadioItem",0,X,"ContextMenuSeparator",0,Z,"ContextMenuShortcut",0,ee,"ContextMenuSub",0,K,"ContextMenuSubContent",0,U,"ContextMenuSubTrigger",0,Q,"ContextMenuTrigger",0,F],81798)}]);
+
+//# debugId=4a508537-0bd5-1ae1-9df7-1cea918a6ea7
+//# sourceMappingURL=0252ay3h02f81.js.map

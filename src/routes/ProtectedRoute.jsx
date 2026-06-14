@@ -1,0 +1,30 @@
+import { Navigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+
+export function ProtectedRoute({ children, allowedRoles }) {
+  const { user, profile, parentSession, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-500">Chargement...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Une session "parent" (par code élève) n'a pas de compte auth.users.
+  // Elle ne doit jamais accéder aux routes protégées du personnel.
+  if (!user && !parentSession) return <Navigate to="/login" replace />
+  if (!user && parentSession) return <Navigate to="/non-autorise" replace />
+
+  if (!profile) return <Navigate to="/login" replace />
+
+  if (allowedRoles && !allowedRoles.includes(profile.role)) {
+    return <Navigate to="/non-autorise" replace />
+  }
+
+  return children
+}

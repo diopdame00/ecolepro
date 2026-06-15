@@ -1,30 +1,36 @@
 /**
- * Calcule la moyenne d'une matière
- * @param {number[]} devoirs - tableau des notes de devoirs
+ * Calcule la moyenne d'une matière selon la norme sénégalaise :
+ *   1. Moyenne des devoirs = Somme(devoirs) / Nombre(devoirs renseignés)
+ *   2. MOY/20 = (Moyenne_Devoirs + Compo) / 2
+ *   Si un seul des deux est présent, on utilise uniquement celui-là.
+ *
+ * @param {number[]} devoirs - tableau brut des notes de devoirs (peut contenir null/undefined)
  * @param {number|null} composition - note de composition
- * @param {number} poidsDevoirs - poids des devoirs en % (ex: 60)
- * @param {number} poidsCompo - poids de la compo en % (ex: 40)
  */
-export function calculerMoyenneMatiere(devoirs, composition, poidsDevoirs = 60, poidsCompo = 40) {
+export function calculerMoyenneMatiere(devoirs, composition) {
   const devoirsValides = devoirs.filter(d => d !== null && d !== undefined && d !== '')
-  if (devoirsValides.length === 0 && !composition) return null
+  const hasMoyDevoirs  = devoirsValides.length > 0
+  const hasCompo       = composition !== null && composition !== undefined && composition !== ''
 
-  const moyDevoirs = devoirsValides.length > 0
+  if (!hasMoyDevoirs && !hasCompo) return null
+
+  const moyDevoirs = hasMoyDevoirs
     ? devoirsValides.reduce((a, b) => a + Number(b), 0) / devoirsValides.length
-    : 0
+    : null
 
-  const compo = composition !== null && composition !== undefined && composition !== ''
-    ? Number(composition)
-    : 0
+  const compo = hasCompo ? Number(composition) : null
 
-  if (devoirsValides.length === 0) return compo
-  if (!composition && composition !== 0) return moyDevoirs
+  // Si l'un des deux manque, on retourne celui qui est disponible
+  if (moyDevoirs === null) return compo
+  if (compo === null)      return moyDevoirs
 
-  return (moyDevoirs * poidsDevoirs / 100) + (compo * poidsCompo / 100)
+  // Les deux sont présents : formule sénégalaise
+  return (moyDevoirs + compo) / 2
 }
 
 /**
- * Calcule la moyenne générale pondérée
+ * Calcule la moyenne générale pondérée du bulletin
+ * Formule : Somme(MOY/20 × Coef) / Somme(Coefficients)
  * @param {Array} matieres - [{moyenne, coefficient}]
  */
 export function calculerMoyenneGenerale(matieres) {
@@ -32,7 +38,7 @@ export function calculerMoyenneGenerale(matieres) {
   if (matieresValides.length === 0) return null
 
   const totalPondere = matieresValides.reduce((acc, m) => acc + (m.moyenne * m.coefficient), 0)
-  const totalCoefs = matieresValides.reduce((acc, m) => acc + m.coefficient, 0)
+  const totalCoefs   = matieresValides.reduce((acc, m) => acc + m.coefficient, 0)
 
   return totalCoefs > 0 ? totalPondere / totalCoefs : null
 }
@@ -54,11 +60,11 @@ export function getMention(moyenne) {
  */
 export function getAppreciation(moyenne) {
   if (moyenne === null || moyenne === undefined) return '-'
-  if (moyenne >= 16) return 'T. Bien'
-  if (moyenne >= 14) return 'Bien'
-  if (moyenne >= 12) return 'A. Bien'
+  if (moyenne >= 16) return 'Excellent travail'
+  if (moyenne >= 14) return 'Très bon travail'
+  if (moyenne >= 12) return 'Assez bien'
   if (moyenne >= 10) return 'Passable'
-  if (moyenne >= 8) return 'Faible'
+  if (moyenne >= 8)  return 'Faible'
   return 'Insuffisant'
 }
 
@@ -99,9 +105,11 @@ export function getStatutPassage(moyenne, seuilAdmis = 10, seuilBorderline = 8) 
 }
 
 /**
- * Formate un nombre en note sur 20
+ * Formate un nombre en note (2 décimales), retourne '-' si absent
  */
 export function formatNote(note) {
   if (note === null || note === undefined || note === '') return '-'
-  return Number(note).toFixed(2)
+  const n = Number(note)
+  if (isNaN(n)) return '-'
+  return n.toFixed(2)
 }

@@ -140,15 +140,17 @@ export default function EcolesPage() {
       setModalOpen(false)
       setForm(EMPTY_FORM)
 
-      // Ouvrir la modale avec uniquement le mot de passe provisoire
-      setCodeModal({
-        school_name:        schoolName,
-        director_name:      directorName,
-        director_email:     directorEmail,
-        temp_password:      result.temp_password,
-        expires_at:         result.expires_at,
-        type_etablissement: typeEtablissement,
-      })
+      // Petit délai pour laisser la modale de création se fermer avant d'ouvrir celle des codes
+      setTimeout(() => {
+        setCodeModal({
+          school_name:        schoolName,
+          director_name:      directorName,
+          director_email:     directorEmail,
+          temp_password:      result.temp_password,
+          expires_at:         result.expires_at,
+          type_etablissement: typeEtablissement,
+        })
+      }, 150)
 
       await fetchEcoles()
 
@@ -382,7 +384,7 @@ export default function EcolesPage() {
                           <Users size={11} /> {nbProfs} prof(s)
                         </span>
                         <span className="flex items-center gap-1">
-                          <GraduationCap size={11} /> {ecole.subscription_plan}
+                          <GraduationCap size={11} /> Starter · 22 500 F/mois
                         </span>
                         <span className="flex items-center gap-1">
                           <BookOpen size={11} /> Niveaux : {typeInfo.niveaux.join(', ')}
@@ -634,21 +636,25 @@ export default function EcolesPage() {
                   <div className="font-semibold text-green-900 text-sm">Nouveau code généré avec succès</div>
                 </div>
                 <div className="space-y-3">
-                  {[
-                    { label: 'Nouveau code admin', value: regenResult.admin_temp_code },
-                    { label: 'Nouveau mot de passe provisoire', value: regenResult.temp_password },
-                  ].filter(item => item.value).map(({ label, value }) => (
-                    <div key={label}>
-                      <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">{label}</label>
-                      <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-                        <span className="font-mono font-bold tracking-widest text-gray-900 flex-1">{value}</span>
-                        <button onClick={() => { navigator.clipboard.writeText(value); toast.success('Copié !') }}
-                          className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors">
-                          <Copy size={14} className="text-gray-500" />
-                        </button>
-                      </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
+                      Nouveau mot de passe provisoire
+                    </label>
+                    <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                      <Key size={15} className="text-primary-600 shrink-0" />
+                      <span className="font-mono font-bold tracking-widest text-gray-900 flex-1 break-all text-lg">
+                        {regenResult.temp_password}
+                      </span>
+                      <button onClick={() => { navigator.clipboard.writeText(regenResult.temp_password); toast.success('Copié !') }}
+                        className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors">
+                        <Copy size={14} className="text-gray-500" />
+                      </button>
                     </div>
-                  ))}
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      L'admin se connecte avec son email et ce nouveau mot de passe.
+                      Il sera invité à créer le sien dès la connexion.
+                    </p>
+                  </div>
                   <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl text-xs text-orange-800">
                     <AlertTriangle size={13} className="shrink-0 mt-0.5" />
                     Expire le {new Date(regenResult.expires_at).toLocaleString('fr-FR')}

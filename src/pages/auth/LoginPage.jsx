@@ -237,24 +237,44 @@ export default function LoginPage() {
   // ── Connexion par code temporaire admin ──────────────────
   async function handleAdminCodeLogin(e) {
     e.preventDefault()
-    if (!form.adminCode?.trim()) { toast.error('Entrez votre code temporaire'); return }
+    const code = form.adminCode?.trim().toUpperCase()
+    if (!code) { toast.error('Entrez votre code temporaire'); return }
     setLoading(true)
     try {
-      const { data: userRecord, error } = await supabase
-        .from('users')
-        .select('id, email, temp_code, temp_code_expires_at, role, school_id')
-        .eq('temp_code', form.adminCode.trim().toUpperCase())
-        .in('role', ['admin', 'secretaire', 'prof', 'surveillant'])
-        .single()
+      // Utiliser la clé service via anon + RPC pour éviter le blocage RLS
+      const { data, error } = await supabase.rpc('verify_admin_temp_code', {
+        p_code: code
+      })
 
-      if (error || !userRecord) {
-        throw new Error('Code temporaire introuvable ou invalide')
+      // Si la RPC n'existe pas encore, fallback sur requête directe
+      if (error?.code === 'PGRST202' || error?.message?.includes('does not exist')) {
+        // La RPC n'existe pas → requête directe (nécessite une policy RLS permissive sur temp_code)
+        const { data: userRecord, error: qErr } = await supabase
+          .from('users')
+          .select('id, email, temp_code, temp_code_expires_at, role, school_id')
+          .eq('temp_code', code)
+          .in('role', ['admin', 'secretaire', 'prof', 'surveillant'])
+          .maybeSingle()
+
+        if (qErr) throw new Error('Erreur DB : ' + qErr.message)
+        if (!userRecord) throw new Error('Code temporaire introuvable. Vérifiez le code et réessayez.')
+        if (userRecord.temp_code_expires_at && new Date(userRecord.temp_code_expires_at) < new Date()) {
+          throw new Error('Ce code a expiré. Demandez une régénération au super administrateur.')
+        }
+        setAdminCodeVerified(userRecord)
+        setMode('admin_code_pwd')
+        return
       }
-      if (userRecord.temp_code_expires_at && new Date(userRecord.temp_code_expires_at) < new Date()) {
-        throw new Error('Ce code a expiré. Demandez une régénération au super administrateur.')
-      }
-      setAdminCodeVerified(userRecord)
+
+      if (error) throw new Error('Erreur : ' + error.message)
+      if (!data || data.length === 0) throw new Error('Code temporaire introuvable. Vérifiez le code et réessayez.')
+
+      const record = data[0]
+      if (!record.is_valid) throw new Error(record.error_message || 'Code invalide ou expiré.')
+
+      setAdminCodeVerified({ id: record.user_id, email: record.email, role: record.role })
       setMode('admin_code_pwd')
+
     } catch (err) {
       toast.error(err.message)
     } finally {
@@ -461,8 +481,9 @@ export default function LoginPage() {
                   <input type="text" required placeholder="ECO-XXXX-XXXX"
                     value={form.adminCode}
                     onChange={e => setForm({ ...form, adminCode: e.target.value.toUpperCase() })}
-                    maxLength={12}
+                    maxLength={13}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-center font-mono font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-primary-500 uppercase" />
+                  <p className="text-xs text-gray-400 mt-1 text-center">{form.adminCode.length}/13 caractères</p>
                 </div>
                 <SubmitBtn loading={loading}>Vérifier le code</SubmitBtn>
               </form>

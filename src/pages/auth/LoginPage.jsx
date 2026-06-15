@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { supabase } from '../../lib/supabase'
 import {
   GraduationCap, Eye, EyeOff, KeyRound, Mail,
   QrCode, Camera, Upload, ArrowLeft, Lock, AlertCircle, CheckCircle2
@@ -59,7 +60,7 @@ async function decodeQRFromCamera(videoEl) {
 // COMPOSANT PRINCIPAL
 // ══════════════════════════════════════════════════════════════
 export default function LoginPage() {
-  const { signIn, signInWithCode, signInWithQR, activateQRFirstLogin, mustChangePassword, changePassword, user, profile, loading: authLoading, verifyAdminCode } = useAuth()
+  const { signIn, signInWithCode, signInWithQR, activateQRFirstLogin, mustChangePassword, changePassword, user, profile, loading: authLoading } = useAuth()
   const navigate  = useNavigate()
 
   // Modes : 'email' | 'admin_code' | 'admin_code_pwd' | 'code' | 'qr_choice' | 'qr_scan' | 'qr_upload' | 'qr_activate' | 'force_change'
@@ -239,7 +240,19 @@ export default function LoginPage() {
     if (!form.adminCode?.trim()) { toast.error('Entrez votre code temporaire'); return }
     setLoading(true)
     try {
-      const userRecord = await verifyAdminCode(form.adminCode.trim().toUpperCase())
+      const { data: userRecord, error } = await supabase
+        .from('users')
+        .select('id, email, temp_code, temp_code_expires_at, role, school_id')
+        .eq('temp_code', form.adminCode.trim().toUpperCase())
+        .in('role', ['admin', 'secretaire', 'prof', 'surveillant'])
+        .single()
+
+      if (error || !userRecord) {
+        throw new Error('Code temporaire introuvable ou invalide')
+      }
+      if (userRecord.temp_code_expires_at && new Date(userRecord.temp_code_expires_at) < new Date()) {
+        throw new Error('Ce code a expiré. Demandez une régénération au super administrateur.')
+      }
       setAdminCodeVerified(userRecord)
       setMode('admin_code_pwd')
     } catch (err) {

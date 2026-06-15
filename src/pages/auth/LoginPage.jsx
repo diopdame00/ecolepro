@@ -59,7 +59,7 @@ async function decodeQRFromCamera(videoEl) {
 // COMPOSANT PRINCIPAL
 // ══════════════════════════════════════════════════════════════
 export default function LoginPage() {
-  const { signIn, signInWithCode, signInWithQR, activateQRFirstLogin, mustChangePassword, changePassword, user, profile, loading: authLoading } = useAuth()
+  const { signIn, signInWithCode, signInWithQR, activateQRFirstLogin, mustChangePassword, changePassword, user, profile, loading: authLoading, verifyAdminCode } = useAuth()
   const navigate  = useNavigate()
 
   // Modes : 'email' | 'admin_code' | 'admin_code_pwd' | 'code' | 'qr_choice' | 'qr_scan' | 'qr_upload' | 'qr_activate' | 'force_change'
@@ -239,25 +239,7 @@ export default function LoginPage() {
     if (!form.adminCode?.trim()) { toast.error('Entrez votre code temporaire'); return }
     setLoading(true)
     try {
-      // 1. Vérifier le code dans la table users
-      const { data: userRecord, error: codeError } = await supabase
-        .from('users')
-        .select('id, email, temp_code, temp_code_expires_at, role, school_id')
-        .eq('temp_code', form.adminCode.trim().toUpperCase())
-        .in('role', ['admin', 'secretaire', 'prof', 'surveillant'])
-        .single()
-
-      if (codeError || !userRecord) {
-        throw new Error('Code temporaire introuvable ou invalide')
-      }
-
-      // 2. Vérifier expiration
-      if (userRecord.temp_code_expires_at && new Date(userRecord.temp_code_expires_at) < new Date()) {
-        throw new Error('Ce code a expiré. Demandez une régénération au super administrateur.')
-      }
-
-      // 3. Connexion avec l'email récupéré + mot de passe temporaire
-      //    L'admin doit aussi entrer son mot de passe provisoire
+      const userRecord = await verifyAdminCode(form.adminCode.trim().toUpperCase())
       setAdminCodeVerified(userRecord)
       setMode('admin_code_pwd')
     } catch (err) {

@@ -205,6 +205,26 @@ export function AuthProvider({ children }) {
     fetchProfile(user.id)
   }
 
+  // Vérification du code temporaire admin (première connexion)
+  async function verifyAdminCode(code) {
+    const { data: userRecord, error } = await supabase
+      .from('users')
+      .select('id, email, temp_code, temp_code_expires_at, role, school_id')
+      .eq('temp_code', code)
+      .in('role', ['admin', 'secretaire', 'prof', 'surveillant'])
+      .single()
+
+    if (error || !userRecord) {
+      throw new Error('Code temporaire introuvable ou invalide')
+    }
+
+    if (userRecord.temp_code_expires_at && new Date(userRecord.temp_code_expires_at) < new Date()) {
+      throw new Error('Ce code a expiré. Demandez une régénération au super administrateur.')
+    }
+
+    return userRecord
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
     clearParentSession()
@@ -225,6 +245,7 @@ export function AuthProvider({ children }) {
     signInWithCode,
     signInWithQR,
     activateQRFirstLogin,
+    verifyAdminCode,
     changePassword,
     signOut,
     refreshProfile: () => user && fetchProfile(user.id),

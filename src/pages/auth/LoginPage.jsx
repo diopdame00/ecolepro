@@ -111,14 +111,38 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     try {
+      // Essayer connexion normale d'abord
       await signIn(form.email, form.password)
       toast.success('Connexion réussie !')
-      // La navigation se fait via useEffect quand le profil est chargé
     } catch {
-      toast.error('Email ou mot de passe incorrect')
-      setLoading(false)
+      // Si ça échoue, vérifier si c'est un code temporaire
+      try {
+        const { data, error } = await supabase.rpc('verify_admin_first_login', {
+          p_email: form.email.trim(),
+          p_code:  form.password.trim().toUpperCase(),
+        })
+        const result = data?.[0]
+        if (error || !result?.is_valid) {
+          toast.error('Email ou mot de passe incorrect')
+          setLoading(false)
+          return
+        }
+        // C'est un code temporaire valide → récupérer le vrai mot de passe provisoire
+        const { data: tempPwd, error: pwdErr } = await supabase
+          .rpc('get_admin_temp_password', { p_user_id: result.user_id })
+        if (pwdErr || !tempPwd) {
+          toast.error('Code valide mais connexion impossible. Contactez le super admin.')
+          setLoading(false)
+          return
+        }
+        // Se connecter avec le mot de passe provisoire → must_change_password → écran force_change
+        await signIn(result.email, tempPwd)
+        toast.success('Code vérifié ! Définissez votre mot de passe.')
+      } catch {
+        toast.error('Email ou mot de passe incorrect')
+        setLoading(false)
+      }
     }
-    // Ne pas mettre setLoading(false) ici — le useEffect navigue et démonte le composant
   }
 
   // ── Code élève ───────────────────────────────────────────

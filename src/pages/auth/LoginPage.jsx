@@ -478,12 +478,11 @@ export default function LoginPage() {
               <form onSubmit={handleAdminCodeLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Code temporaire</label>
-                  <input type="text" required placeholder="ECO-XXXX-XXXX"
+                  <input type="text" required placeholder="ex: ECO-ABCD-XY3W"
                     value={form.adminCode}
                     onChange={e => setForm({ ...form, adminCode: e.target.value.toUpperCase() })}
-                    maxLength={13}
+
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-center font-mono font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-primary-500 uppercase" />
-                  <p className="text-xs text-gray-400 mt-1 text-center">{form.adminCode.length}/13 caractères</p>
                 </div>
                 <SubmitBtn loading={loading}>Vérifier le code</SubmitBtn>
               </form>

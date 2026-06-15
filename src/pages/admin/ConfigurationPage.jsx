@@ -2,38 +2,42 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
-import { Card, Button, Input, Select, Modal } from '../../components/ui'
+import { Card, Button, Input, Modal } from '../../components/ui'
 import {
-  Settings, Plus, Trash2, Save, Copy, ChevronDown,
-  BookOpen, GraduationCap, AlertCircle, CheckCircle2,
+  Plus, Trash2, Save, Copy,
+  BookOpen, GraduationCap,
   Wallet, CheckCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+// Extrait le niveau depuis le nom de classe : "3ème A" → "3ème", "6ème B" → "6ème"
+function extractNiveau(nomClasse) {
+  const match = nomClasse?.match(/^(\d+ème|\d+ere?|TL|TS|TES|1ère?|2nde?|Terminale?\s*\w*)/i)
+  return match ? match[1].trim() : nomClasse?.split(' ')[0] || nomClasse || 'Autre'
+}
+
 export default function ConfigurationPage() {
   const { schoolId } = useAuth()
-  const [classes, setClasses]         = useState([])
-  const [subjects, setSubjects]       = useState([])
-  const [selectedClass, setSelectedClass] = useState(null)
-  const [classSubjects, setClassSubjects] = useState([])
-  const [config, setConfig]           = useState({ poids_devoirs: 60, poids_compo: 40, seuil_admis: 10, seuil_borderline: 8 })
-  const [loading, setLoading]         = useState(true)
-  const [saving, setSaving]           = useState(false)
-  const [savingFrais, setSavingFrais] = useState(false)
-  const [addOpen, setAddOpen]         = useState(false)
-  const [dupOpen, setDupOpen]         = useState(false)
-  const [dupTarget, setDupTarget]     = useState('')
-  const [newSub, setNewSub]           = useState({ subject_id: '', coefficient: 1 })
+  const [classes, setClasses]               = useState([])
+  const [subjects, setSubjects]             = useState([])
+  const [selectedClass, setSelectedClass]   = useState(null)
+  const [classSubjects, setClassSubjects]   = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [saving, setSaving]                 = useState(false)
+  const [savingFrais, setSavingFrais]       = useState(false)
+  const [addOpen, setAddOpen]               = useState(false)
+  const [dupOpen, setDupOpen]               = useState(false)
+  const [dupTarget, setDupTarget]           = useState('')
+  const [newSub, setNewSub]                 = useState({ subject_id: '', coefficient: 1 })
 
-  // Frais par classe (édition locale)
-  const [fraisEdit, setFraisEdit]     = useState({}) // { [classId]: { frais_scolarite, frais_inscription } }
-  const [fraisDirty, setFraisDirty]   = useState({}) // ids modifiés
+  // Frais par NIVEAU (édition locale)
+  // { [niveau]: { frais_inscription, frais_scolarite, dirty } }
+  const [fraisNiveau, setFraisNiveau] = useState({})
 
   useEffect(() => {
     if (schoolId) {
       fetchClasses()
       fetchSubjects()
-      fetchConfig()
     }
   }, [schoolId])
 
@@ -48,28 +52,37 @@ export default function ConfigurationPage() {
       .select('*')
       .eq('school_id', schoolId)
       .order('nom')
-    setClasses(data || [])
-    // Initialiser fraisEdit
-    const edit = {}
-    ;(data || []).forEach(c => {
-      edit[c.id] = {
-        frais_scolarite:  c.frais_scolarite  || '',
-        frais_inscription: c.frais_inscription || '',
+    const liste = data || []
+    setClasses(liste)
+
+    // Construire fraisNiveau : une entrée par niveau unique
+    // Si plusieurs classes du même niveau ont des frais différents, on prend la première non-nulle
+    const niveauxMap = {}
+    for (const c of liste) {
+      const niv = extractNiveau(c.nom)
+      if (!niveauxMap[niv]) {
+        niveauxMap[niv] = {
+          frais_inscription: c.frais_inscription || '',
+          frais_scolarite:   c.frais_scolarite   || '',
+          dirty: false,
+        }
+      } else {
+        // Prendre la valeur si l'existante est vide
+        if (!niveauxMap[niv].frais_inscription && c.frais_inscription)
+          niveauxMap[niv].frais_inscription = c.frais_inscription
+        if (!niveauxMap[niv].frais_scolarite && c.frais_scolarite)
+          niveauxMap[niv].frais_scolarite = c.frais_scolarite
       }
-    })
-    setFraisEdit(edit)
-    if (!selectedClass && data?.length > 0) setSelectedClass(data[0])
+    }
+    setFraisNiveau(niveauxMap)
+
+    if (!selectedClass && liste.length > 0) setSelectedClass(liste[0])
     setLoading(false)
   }
 
   async function fetchSubjects() {
     const { data } = await supabase.from('subjects').select('*').eq('school_id', schoolId).order('nom')
     setSubjects(data || [])
-  }
-
-  async function fetchConfig() {
-    const { data } = await supabase.from('school_config').select('*').eq('school_id', schoolId).single()
-    if (data) setConfig(data)
   }
 
   async function fetchClassSubjects(classId) {
@@ -81,52 +94,46 @@ export default function ConfigurationPage() {
     setClassSubjects(data || [])
   }
 
-  // ── Frais par classe ──────────────────────────────────────
-  function handleFraisChange(classId, field, value) {
-    setFraisEdit(prev => ({ ...prev, [classId]: { ...prev[classId], [field]: value } }))
-    setFraisDirty(prev => ({ ...prev, [classId]: true }))
+  // ── Frais par niveau ──────────────────────────────────────
+  function handleFraisNiveauChange(niveau, field, value) {
+    setFraisNiveau(prev => ({
+      ...prev,
+      [niveau]: { ...prev[niveau], [field]: value, dirty: true }
+    }))
   }
 
-  async function sauvegarderTousLesFrais() {
-    const dirtyIds = Object.keys(fraisDirty).filter(id => fraisDirty[id])
-    if (dirtyIds.length === 0) { toast('Aucune modification', { icon: 'ℹ️' }); return }
+  async function sauvegarderFraisNiveau() {
+    const niveauxDirty = Object.entries(fraisNiveau).filter(([, v]) => v.dirty)
+    if (niveauxDirty.length === 0) { toast('Aucune modification', { icon: 'ℹ️' }); return }
+
     setSavingFrais(true)
     try {
-      for (const id of dirtyIds) {
-        const { frais_scolarite, frais_inscription } = fraisEdit[id]
-        const { error } = await supabase
-          .from('classes')
-          .update({
-            frais_scolarite:   frais_scolarite  ? Number(frais_scolarite)  : null,
-            frais_inscription: frais_inscription ? Number(frais_inscription) : null,
-          })
-          .eq('id', id)
-        if (error) throw error
+      for (const [niveau, vals] of niveauxDirty) {
+        // Récupérer toutes les classes de ce niveau
+        const classesNiveau = classes.filter(c => extractNiveau(c.nom) === niveau)
+        for (const c of classesNiveau) {
+          const { error } = await supabase
+            .from('classes')
+            .update({
+              frais_inscription: vals.frais_inscription ? Number(vals.frais_inscription) : null,
+              frais_scolarite:   vals.frais_scolarite   ? Number(vals.frais_scolarite)   : null,
+            })
+            .eq('id', c.id)
+          if (error) throw error
+        }
       }
-      setFraisDirty({})
-      toast.success(`${dirtyIds.length} classe(s) mise(s) à jour !`)
+      // Marquer tout comme propre
+      setFraisNiveau(prev => {
+        const next = { ...prev }
+        for (const niv of Object.keys(next)) next[niv] = { ...next[niv], dirty: false }
+        return next
+      })
+      toast.success(`${niveauxDirty.length} niveau(x) mis à jour !`)
       fetchClasses()
     } catch (err) {
       toast.error('Erreur : ' + err.message)
     } finally {
       setSavingFrais(false)
-    }
-  }
-
-  // ── Config globale ────────────────────────────────────────
-  async function sauvegarderConfig() {
-    setSaving(true)
-    try {
-      const { error } = await supabase.from('school_config').upsert(
-        { school_id: schoolId, ...config },
-        { onConflict: 'school_id' }
-      )
-      if (error) throw error
-      toast.success('Configuration globale sauvegardée !')
-    } catch (err) {
-      toast.error('Erreur : ' + err.message)
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -202,20 +209,22 @@ export default function ConfigurationPage() {
       })
       fetchSubjects()
       fetchClassSubjects(selectedClass.id)
+      setAddOpen(false)
       toast.success('Matière créée et ajoutée !')
     } catch (err) {
       toast.error(err.message)
     }
   }
 
-  const totalCoefs  = classSubjects.reduce((acc, cs) => acc + Number(cs.coefficient), 0)
-  const matieresDispo = subjects.filter(s => !classSubjects.find(cs => cs.subject_id === s.id))
-  const nbDirty = Object.values(fraisDirty).filter(Boolean).length
-
-  function formatFCFA(v) {
-    if (!v && v !== 0) return '—'
-    return Number(v).toLocaleString('fr-FR') + ' F'
-  }
+  const totalCoefs     = classSubjects.reduce((acc, cs) => acc + Number(cs.coefficient), 0)
+  const matieresDispo  = subjects.filter(s => !classSubjects.find(cs => cs.subject_id === s.id))
+  const niveauxDirty   = Object.values(fraisNiveau).filter(v => v.dirty).length
+  // Niveaux triés (ordre naturel : 6ème, 5ème, 4ème, 3ème…)
+  const niveauxSorted  = Object.keys(fraisNiveau).sort((a, b) => {
+    const numA = parseInt(a) || 99
+    const numB = parseInt(b) || 99
+    return numB - numA // décroissant : 6→5→4→3
+  })
 
   // ══════════════════════════════════════════════════════════
   return (
@@ -226,20 +235,22 @@ export default function ConfigurationPage() {
           <p className="text-gray-500 text-sm">Paramètres pédagogiques et frais scolaires</p>
         </div>
 
-        {/* ══ SECTION FRAIS PAR CLASSE ══ */}
+        {/* ══ SECTION FRAIS PAR NIVEAU ══ */}
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Wallet size={18} className="text-primary-600" />
               <div>
-                <h2 className="font-bold text-gray-900">Frais scolaires par classe</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Inscription et mensualité — utilisés automatiquement lors des paiements</p>
+                <h2 className="font-bold text-gray-900">Frais scolaires par niveau</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Les frais s'appliquent à toutes les classes du même niveau — utilisés automatiquement lors des paiements
+                </p>
               </div>
             </div>
-            <Button onClick={sauvegarderTousLesFrais} loading={savingFrais} size="sm"
-              disabled={nbDirty === 0}>
+            <Button onClick={sauvegarderFraisNiveau} loading={savingFrais} size="sm"
+              disabled={niveauxDirty === 0}>
               <Save size={14} />
-              {nbDirty > 0 ? `Sauvegarder (${nbDirty})` : 'Sauvegarder'}
+              {niveauxDirty > 0 ? `Sauvegarder (${niveauxDirty})` : 'Sauvegarder'}
             </Button>
           </div>
 
@@ -247,7 +258,7 @@ export default function ConfigurationPage() {
             <div className="flex justify-center py-10">
               <div className="w-7 h-7 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : classes.length === 0 ? (
+          ) : niveauxSorted.length === 0 ? (
             <div className="p-8 text-center text-gray-400 text-sm">
               Aucune classe créée. Créez d'abord vos classes.
             </div>
@@ -255,26 +266,31 @@ export default function ConfigurationPage() {
             <div>
               {/* En-têtes */}
               <div className="grid grid-cols-12 gap-2 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                <div className="col-span-4">Classe</div>
+                <div className="col-span-4">Niveau</div>
                 <div className="col-span-4">Inscription (F CFA)</div>
                 <div className="col-span-4">Mensualité (F CFA)</div>
               </div>
 
               <div className="divide-y divide-gray-50">
-                {classes.map(c => {
-                  const edit   = fraisEdit[c.id] || {}
-                  const isDirty = fraisDirty[c.id]
+                {niveauxSorted.map(niveau => {
+                  const vals    = fraisNiveau[niveau] || {}
+                  const isDirty = vals.dirty
+                  // Nombre de classes concernées
+                  const nbClasses = classes.filter(c => extractNiveau(c.nom) === niveau).length
+
                   return (
-                    <div key={c.id}
+                    <div key={niveau}
                       className={`grid grid-cols-12 gap-2 px-5 py-3 items-center transition-colors
                         ${isDirty ? 'bg-amber-50' : 'hover:bg-gray-50'}`}>
                       <div className="col-span-4 flex items-center gap-2">
-                        <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center font-black text-primary-700 text-xs shrink-0">
-                          {c.nom?.replace(/[^A-Za-z]/g, '').slice(-1) || c.nom?.slice(0, 2)}
+                        <div className="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center font-black text-primary-700 text-sm shrink-0">
+                          {niveau.replace(/ème|ere?/i, '')}
                         </div>
                         <div>
-                          <div className="font-semibold text-gray-900 text-sm">{c.nom}</div>
-                          <div className="text-xs text-gray-400">{c.annee_scolaire}</div>
+                          <div className="font-semibold text-gray-900 text-sm">{niveau}</div>
+                          <div className="text-xs text-gray-400">
+                            {nbClasses} classe{nbClasses > 1 ? 's' : ''}
+                          </div>
                         </div>
                         {isDirty && (
                           <span className="ml-1 w-2 h-2 bg-amber-400 rounded-full shrink-0" title="Non sauvegardé" />
@@ -285,9 +301,9 @@ export default function ConfigurationPage() {
                           type="number"
                           min="0"
                           step="500"
-                          placeholder={c.frais_inscription ? String(c.frais_inscription) : 'ex: 15000'}
-                          value={edit.frais_inscription}
-                          onChange={e => handleFraisChange(c.id, 'frais_inscription', e.target.value)}
+                          placeholder="ex: 15000"
+                          value={vals.frais_inscription}
+                          onChange={e => handleFraisNiveauChange(niveau, 'frais_inscription', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                         />
                       </div>
@@ -296,9 +312,9 @@ export default function ConfigurationPage() {
                           type="number"
                           min="0"
                           step="500"
-                          placeholder={c.frais_scolarite ? String(c.frais_scolarite) : 'ex: 25000'}
-                          value={edit.frais_scolarite}
-                          onChange={e => handleFraisChange(c.id, 'frais_scolarite', e.target.value)}
+                          placeholder="ex: 12000"
+                          value={vals.frais_scolarite}
+                          onChange={e => handleFraisNiveauChange(niveau, 'frais_scolarite', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                         />
                       </div>
@@ -311,8 +327,10 @@ export default function ConfigurationPage() {
               <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-2 text-xs text-gray-500">
                 <CheckCircle size={13} className="text-green-500" />
                 Les montants seront pré-remplis automatiquement lors de l'enregistrement d'un paiement.
-                {nbDirty > 0 && (
-                  <span className="ml-auto text-amber-600 font-semibold">{nbDirty} classe(s) modifiée(s) — pensez à sauvegarder</span>
+                {niveauxDirty > 0 && (
+                  <span className="ml-auto text-amber-600 font-semibold">
+                    {niveauxDirty} niveau(x) modifié(s) — pensez à sauvegarder
+                  </span>
                 )}
               </div>
             </div>
@@ -320,7 +338,6 @@ export default function ConfigurationPage() {
         </Card>
 
         {/* ══ SECTION MATIÈRES PAR CLASSE ══ */}
-        {/* Sélecteur de classe */}
         <Card className="p-4">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -413,44 +430,6 @@ export default function ConfigurationPage() {
             )}
           </Card>
         )}
-
-        {/* ── Config globale de notation ── */}
-        <Card className="p-5">
-          <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Settings size={18} className="text-primary-600" />
-            Barème de notation (global)
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: 'Poids devoirs (%)',       key: 'poids_devoirs',     min: 0, max: 100 },
-              { label: 'Poids composition (%)',   key: 'poids_compo',       min: 0, max: 100 },
-              { label: 'Seuil d\'admission (/20)', key: 'seuil_admis',      min: 0, max: 20 },
-              { label: 'Seuil borderline (/20)',  key: 'seuil_borderline',  min: 0, max: 20 },
-            ].map(({ label, key, min, max }) => (
-              <div key={key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                <input type="number" min={min} max={max}
-                  value={config[key]}
-                  onChange={e => setConfig({ ...config, [key]: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-            ))}
-          </div>
-
-          {config.poids_devoirs + config.poids_compo !== 100 && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-              <AlertCircle size={14} />
-              La somme devoirs + compo doit égaler 100% (actuellement {config.poids_devoirs + config.poids_compo}%)
-            </div>
-          )}
-
-          <div className="mt-4 flex justify-end">
-            <Button onClick={sauvegarderConfig} loading={saving}
-              disabled={config.poids_devoirs + config.poids_compo !== 100}>
-              <Save size={16} /> Sauvegarder
-            </Button>
-          </div>
-        </Card>
       </div>
 
       {/* ── Modale ajout matière ── */}

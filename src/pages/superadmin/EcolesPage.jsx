@@ -40,12 +40,7 @@ const TYPE_COLORS = {
   lycee:    'purple',
 }
 
-const PLANS = [
-  { value: 'starter',      label: 'Starter (100 élèves)',  max: 100 },
-  { value: 'basic',        label: 'Basic (300 élèves)',     max: 300 },
-  { value: 'pro',          label: 'Pro (500 élèves)',       max: 500 },
-  { value: 'enterprise',   label: 'Enterprise (illimité)',  max: 9999 },
-]
+const PLAN_STARTER = { value: 'starter', label: 'Starter', price: 22500, max: 999999 }
 
 const EMPTY_FORM = {
   name:               '',
@@ -54,7 +49,6 @@ const EMPTY_FORM = {
   director_name:      '',
   director_email:     '',
   phone:              '',
-  subscription_plan:  'starter',
   type_etablissement: 'college',
 }
 
@@ -125,8 +119,6 @@ export default function EcolesPage() {
             director_name:      form.director_name.trim(),
             director_email:     form.director_email.trim().toLowerCase(),
             phone:              form.phone.trim(),
-            subscription_plan:  form.subscription_plan,
-            max_students:       PLANS.find(p => p.value === form.subscription_plan)?.max || 100,
             type_etablissement: form.type_etablissement,
           }),
         }
@@ -148,12 +140,11 @@ export default function EcolesPage() {
       setModalOpen(false)
       setForm(EMPTY_FORM)
 
-      // Ouvrir la modale des codes (un seul code : le code admin)
+      // Ouvrir la modale avec uniquement le mot de passe provisoire
       setCodeModal({
         school_name:        schoolName,
         director_name:      directorName,
         director_email:     directorEmail,
-        admin_temp_code:    result.admin_temp_code,
         temp_password:      result.temp_password,
         expires_at:         result.expires_at,
         type_etablissement: typeEtablissement,
@@ -275,12 +266,11 @@ export default function EcolesPage() {
       `École : ${modal.school_name}`,
       `Directeur : ${modal.director_name}`,
       `Email : ${modal.director_email}`,
-      `Code admin : ${modal.admin_temp_code}`,
       `Mot de passe provisoire : ${modal.temp_password}`,
       `Expire le : ${new Date(modal.expires_at).toLocaleString('fr-FR')}`,
     ].join('\n')
     navigator.clipboard.writeText(text)
-    toast.success('Toutes les informations copiées !')
+    toast.success('Informations copiées !')
   }
 
   // ── Filtrage ──────────────────────────────────────────────
@@ -493,28 +483,20 @@ export default function EcolesPage() {
               error={formErrors.director_email} />
           </div>
 
-          {/* ── Plan ── */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Plan d'abonnement</label>
-            <div className="grid grid-cols-2 gap-2">
-              {PLANS.map(plan => (
-                <button key={plan.value} type="button"
-                  onClick={() => setForm({ ...form, subscription_plan: plan.value })}
-                  className={`p-3 rounded-xl border-2 text-left transition-all
-                    ${form.subscription_plan === plan.value
-                      ? 'border-primary-500 bg-primary-50'
-                      : 'border-gray-200 hover:border-gray-300'}`}>
-                  <div className={`text-sm font-bold ${form.subscription_plan === plan.value ? 'text-primary-700' : 'text-gray-700'}`}>
-                    {plan.label.split('(')[0].trim()}
-                  </div>
-                  <div className="text-xs text-gray-400">{plan.label.match(/\((.+)\)/)?.[1]}</div>
-                </button>
-              ))}
+          {/* ── Plan unique ── */}
+          <div className="flex items-center justify-between p-4 bg-primary-50 border-2 border-primary-400 rounded-xl">
+            <div>
+              <div className="font-bold text-primary-800">Plan Starter</div>
+              <div className="text-xs text-primary-600 mt-0.5">Élèves illimités · Toutes les fonctionnalités</div>
+            </div>
+            <div className="text-right">
+              <div className="font-black text-primary-800 text-lg">22 500 F</div>
+              <div className="text-xs text-primary-500">/mois</div>
             </div>
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
-            Un code d'activation temporaire (24h) et un mot de passe provisoire seront générés automatiquement.
+            Un mot de passe provisoire (valable 24h) sera généré. L'admin se connecte avec son email et ce mot de passe, puis crée le sien.
           </div>
 
           <div className="flex gap-3 justify-end pt-2">
@@ -582,22 +564,25 @@ export default function EcolesPage() {
             </div>
 
             <div className="space-y-3">
-              {[
-                { label: "Code admin (première connexion)", value: codeModal.admin_temp_code, icon: Key },
-                { label: 'Mot de passe provisoire', value: codeModal.temp_password, icon: Key },
-              ].map(({ label, value, icon: Icon }) => (
-                <div key={label}>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">{label}</label>
-                  <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-                    <Icon size={15} className="text-primary-600 shrink-0" />
-                    <span className="font-mono font-bold tracking-widest text-gray-900 flex-1 break-all">{value}</span>
-                    <button onClick={() => { navigator.clipboard.writeText(value); toast.success('Copié !') }}
-                      className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors shrink-0">
-                      <Copy size={14} className="text-gray-500" />
-                    </button>
-                  </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
+                  Mot de passe de première connexion
+                </label>
+                <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                  <Key size={15} className="text-primary-600 shrink-0" />
+                  <span className="font-mono font-bold tracking-widest text-gray-900 flex-1 break-all text-lg">
+                    {codeModal.temp_password}
+                  </span>
+                  <button onClick={() => { navigator.clipboard.writeText(codeModal.temp_password); toast.success('Copié !') }}
+                    className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors shrink-0">
+                    <Copy size={14} className="text-gray-500" />
+                  </button>
                 </div>
-              ))}
+                <p className="text-xs text-gray-500 mt-1.5">
+                  L'admin se connecte avec <strong>{codeModal.director_email}</strong> et ce mot de passe.
+                  Il sera invité à créer le sien dès la première connexion.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-800">

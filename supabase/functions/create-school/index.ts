@@ -19,17 +19,12 @@ function json(data, status = 200) {
   })
 }
 
-// Génère un code temporaire lisible humain : ECO-XXXX-XXXX
-function generateTempCode() {
+// Génère un mot de passe provisoire lisible : EP-XXXX-XXXX
+// C'est le seul code communiqué à l'admin pour sa première connexion
+function generateTempPassword() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // sans O/0/I/1 pour lisibilité
   const rand = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-  return `ECO-${rand(4)}-${rand(4)}`
-}
-
-// Génère un mdp provisoire sécurisé
-function generateTempPassword() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$'
-  return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+  return `EP-${rand(4)}-${rand(4)}`
 }
 
 Deno.serve(async (req) => {
@@ -67,12 +62,11 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     )
 
-    // Générer les codes
-    const schoolTempCode = generateTempCode()
-    const tempPassword   = generateTempPassword()
-    const codeExpiry     = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24h
+    // Générer uniquement le mot de passe provisoire (= seul code donné à l'admin)
+    const tempPassword = generateTempPassword()
+    const codeExpiry   = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24h
 
-    // 1. Créer l'école avec type + code temporaire
+    // 1. Créer l'école
     const { data: school, error: schoolError } = await supabaseAdmin
       .from('schools')
       .insert({
@@ -82,14 +76,11 @@ Deno.serve(async (req) => {
         director_name,
         director_email,
         phone,
-        subscription_plan: subscription_plan || 'starter',
-        max_students:       max_students || 100,
-        is_active:          true,
+        subscription_plan:       'starter',
+        max_students:            999999,   // illimité
+        is_active:               true,
         type_etablissement,
-        temp_code:          schoolTempCode,
-        temp_code_expires_at: codeExpiry,
-        temp_code_used:     false,
-        onboarding_completed: false,
+        onboarding_completed:    false,
         subscription_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       })
       .select()
@@ -110,20 +101,15 @@ Deno.serve(async (req) => {
       return json({ error: authCreateError.message }, 500)
     }
 
-    // Générer un code temporaire pour l'admin aussi
-    const adminTempCode = generateTempCode()
-
     // 3. Créer le profil utilisateur admin
     const { error: profileError } = await supabaseAdmin.from('users').insert({
-      id:         authUser.user.id,
-      prenom:     director_name,
-      nom:        '',
-      email:      director_email,
-      role:       'admin',
-      school_id:  school.id,
+      id:                   authUser.user.id,
+      prenom:               director_name,
+      nom:                  '',
+      email:                director_email,
+      role:                 'admin',
+      school_id:            school.id,
       must_change_password: true,
-      temp_code:            adminTempCode,
-      temp_code_expires_at: codeExpiry,
     })
 
     if (profileError) {
@@ -154,13 +140,11 @@ Deno.serve(async (req) => {
     }
 
     return json({
-      success: true,
-      school_id:          school.id,
-      school_temp_code:   schoolTempCode,  // affiché au superadmin
-      admin_temp_code:    adminTempCode,   // code temporaire admin
-      temp_password:      tempPassword,    // mdp provisoire
-      expires_at:         codeExpiry,
-      message:            'École créée. Communiquez le code temporaire et le mot de passe à l\'administrateur.',
+      success:       true,
+      school_id:     school.id,
+      temp_password: tempPassword,  // seul code à communiquer à l'admin
+      expires_at:    codeExpiry,
+      message:       'École créée. Communiquez le mot de passe provisoire à l\'administrateur.',
     })
 
   } catch (err) {

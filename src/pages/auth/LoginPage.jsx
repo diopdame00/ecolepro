@@ -63,18 +63,13 @@ export default function LoginPage() {
   const { signIn, signInWithCode, signInWithQR, activateQRFirstLogin, mustChangePassword, changePassword, user, profile, loading: authLoading } = useAuth()
   const navigate  = useNavigate()
 
-  // Modes : 'email' | 'first_login' | 'set_password' | 'code' | 'qr_choice' | 'qr_scan' | 'qr_upload' | 'qr_activate' | 'force_change'
+  // Modes : 'email' | 'code' | 'qr_choice' | 'qr_scan' | 'qr_upload' | 'qr_activate' | 'force_change'
   const [mode, setMode]       = useState('email')
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
-  const [showPwd2, setShowPwd2] = useState(false)
 
   // Email login
   const [form, setForm] = useState({ email: '', password: '', code: '' })
-
-  // Première connexion admin
-  const [firstLoginForm, setFirstLoginForm] = useState({ email: '', tempCode: '' })
-  const [firstLoginUser, setFirstLoginUser] = useState(null) // { id, email, tempPassword }
 
   // Force change password
   const [pwdForm, setPwdForm]     = useState({ newPwd: '', confirmPwd: '' })
@@ -111,37 +106,12 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      // Essayer connexion normale d'abord
       await signIn(form.email, form.password)
-      toast.success('Connexion réussie !')
+      // Si must_change_password=true → effectiveMode bascule sur 'force_change' automatiquement
     } catch {
-      // Si ça échoue, vérifier si c'est un code temporaire
-      try {
-        const { data, error } = await supabase.rpc('verify_admin_first_login', {
-          p_email: form.email.trim(),
-          p_code:  form.password.trim().toUpperCase(),
-        })
-        const result = data?.[0]
-        if (error || !result?.is_valid) {
-          toast.error('Email ou mot de passe incorrect')
-          setLoading(false)
-          return
-        }
-        // C'est un code temporaire valide → récupérer le vrai mot de passe provisoire
-        const { data: tempPwd, error: pwdErr } = await supabase
-          .rpc('get_admin_temp_password', { p_user_id: result.user_id })
-        if (pwdErr || !tempPwd) {
-          toast.error('Code valide mais connexion impossible. Contactez le super admin.')
-          setLoading(false)
-          return
-        }
-        // Se connecter avec le mot de passe provisoire → must_change_password → écran force_change
-        await signIn(result.email, tempPwd)
-        toast.success('Code vérifié ! Définissez votre mot de passe.')
-      } catch {
-        toast.error('Email ou mot de passe incorrect')
-        setLoading(false)
-      }
+      toast.error('Email ou mot de passe incorrect')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -256,62 +226,6 @@ export default function LoginPage() {
     } catch (err) {
       toast.error(err.message || 'Code d\'activation incorrect')
     } finally {
-      setLoading(false)
-    }
-  }
-
-  // ── Étape 1 : vérifier email + code temporaire ───────────
-  async function handleFirstLoginVerify(e) {
-    e.preventDefault()
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.rpc('verify_admin_first_login', {
-        p_email: firstLoginForm.email.trim(),
-        p_code:  firstLoginForm.tempCode.trim().toUpperCase(),
-      })
-
-      if (error) throw new Error('Erreur serveur : ' + error.message)
-      const result = data?.[0]
-      if (!result?.is_valid) throw new Error(result?.error_msg || 'Email ou code temporaire incorrect')
-
-      setFirstLoginUser({ id: result.user_id, email: result.email, role: result.role })
-      setPwdForm({ newPwd: '', confirmPwd: '' })
-      setPwdErrors([])
-      setMode('set_password')
-    } catch (err) {
-      toast.error(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ── Étape 2 : définir son mot de passe et se connecter ──
-  async function handleSetPassword(e) {
-    e.preventDefault()
-    const errors = validatePassword(pwdForm.newPwd)
-    if (errors.length) { setPwdErrors(errors); return }
-    if (pwdForm.newPwd !== pwdForm.confirmPwd) {
-      setPwdErrors(['Les mots de passe ne correspondent pas']); return
-    }
-    setLoading(true)
-    try {
-      // 1. Récupérer le mot de passe provisoire via RPC sécurisée
-      const { data: tempPwd, error: pwdErr } = await supabase
-        .rpc('get_admin_temp_password', { p_user_id: firstLoginUser.id })
-      if (pwdErr || !tempPwd) throw new Error('Impossible de récupérer les infos de connexion. Contactez le super admin.')
-
-      // 2. Se connecter avec email + mot de passe provisoire
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        email:    firstLoginUser.email,
-        password: tempPwd,
-      })
-      if (signInErr) throw new Error('Connexion échouée. Demandez une régénération du code.')
-
-      // 3. Changer immédiatement le mot de passe → déclenche la redirection auto
-      await changePassword(pwdForm.newPwd)
-      toast.success('Compte activé ! Bienvenue 🎉')
-    } catch (err) {
-      toast.error(err.message)
       setLoading(false)
     }
   }
@@ -472,117 +386,7 @@ export default function LoginPage() {
                 </div>
                 <SubmitBtn loading={loading}>Se connecter</SubmitBtn>
               </form>
-              <div className="mt-5 pt-4 border-t border-gray-100 text-center">
-                <p className="text-xs text-gray-500 mb-2">Première connexion ?</p>
-                <button type="button"
-                  onClick={() => { setFirstLoginForm({ email: '', tempCode: '' }); setMode('first_login') }}
-                  className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-sm px-4 py-2 rounded-xl transition-colors">
-                  <KeyRound size={15} />
-                  Utiliser mon code temporaire
-                </button>
-              </div>
             </>
-          )}
-
-          {/* ── PREMIÈRE CONNEXION : email + code temporaire ── */}
-          {effectiveMode === 'first_login' && (
-            <div>
-              <BackBtn onClick={() => setMode('email')} />
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <KeyRound size={20} className="text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-gray-900">Première connexion</h2>
-                  <p className="text-xs text-gray-500">Entrez votre email et le code reçu du super admin</p>
-                </div>
-              </div>
-              <form onSubmit={handleFirstLoginVerify} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Adresse email</label>
-                  <input type="email" required placeholder="votre@email.com"
-                    value={firstLoginForm.email}
-                    onChange={e => setFirstLoginForm({ ...firstLoginForm, email: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Code temporaire</label>
-                  <input type="text" required placeholder="ECO-XXXX-XXXX"
-                    value={firstLoginForm.tempCode}
-                    onChange={e => setFirstLoginForm({ ...firstLoginForm, tempCode: e.target.value.toUpperCase() })}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-center font-mono font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-primary-500 uppercase" />
-                </div>
-                <SubmitBtn loading={loading}>Vérifier</SubmitBtn>
-              </form>
-            </div>
-          )}
-
-          {/* ── PREMIÈRE CONNEXION : créer son mot de passe ── */}
-          {effectiveMode === 'set_password' && firstLoginUser && (
-            <div>
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                  <CheckCircle2 size={20} className="text-green-600" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-gray-900">Créez votre mot de passe</h2>
-                  <p className="text-xs text-gray-500">Code vérifié — définissez votre mot de passe</p>
-                </div>
-              </div>
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm text-green-800">
-                ✓ Identifié comme <strong>{firstLoginUser.email}</strong>
-              </div>
-              <form onSubmit={handleSetPassword} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
-                  <div className="relative">
-                    <input type={showPwd ? 'text' : 'password'} required placeholder="Minimum 8 caractères"
-                      value={pwdForm.newPwd}
-                      onChange={e => { setPwdForm({ ...pwdForm, newPwd: e.target.value }); setPwdErrors([]) }}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 pr-12" />
-                    <button type="button" onClick={() => setShowPwd(!showPwd)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                      {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                  <div className="mt-2 space-y-1">
-                    {[
-                      ['8 caractères minimum', pwdForm.newPwd.length >= 8],
-                      ['1 majuscule',          /[A-Z]/.test(pwdForm.newPwd)],
-                      ['1 chiffre',            /[0-9]/.test(pwdForm.newPwd)],
-                      ['1 caractère spécial',  /[!@#$%^&*]/.test(pwdForm.newPwd)],
-                    ].map(([rule, ok]) => (
-                      <div key={rule} className={`flex items-center gap-1.5 text-xs ${ok ? 'text-green-600' : 'text-gray-400'}`}>
-                        <CheckCircle2 size={12} className={ok ? 'opacity-100' : 'opacity-30'} />{rule}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirmer</label>
-                  <div className="relative">
-                    <input type={showPwd2 ? 'text' : 'password'} required placeholder="Répétez le mot de passe"
-                      value={pwdForm.confirmPwd}
-                      onChange={e => { setPwdForm({ ...pwdForm, confirmPwd: e.target.value }); setPwdErrors([]) }}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 pr-12" />
-                    <button type="button" onClick={() => setShowPwd2(!showPwd2)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                      {showPwd2 ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                </div>
-                {pwdErrors.length > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                    {pwdErrors.map(err => (
-                      <div key={err} className="flex items-center gap-1.5 text-xs text-red-700">
-                        <AlertCircle size={12} />{err}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <SubmitBtn loading={loading}>Créer mon compte et me connecter</SubmitBtn>
-              </form>
-            </div>
           )}
 
           {/* ── CODE ÉLÈVE ── */}

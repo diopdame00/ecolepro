@@ -6,9 +6,9 @@ import { Building2, TrendingUp, AlertCircle, CheckCircle, Plus, Power, Copy } fr
 import toast from 'react-hot-toast'
 
 export const PLAN_PRICES = {
-  starter:  10000,
-  standard: 15000,
-  premium:  25000,
+  starter:  22500,
+  standard: 22500,
+  premium:  22500,
 }
 
 export const PLAN_LABELS = {
@@ -100,15 +100,9 @@ export default function SuperAdminDashboard() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-black text-gray-900">Tableau de bord</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Gestion des écoles clientes</p>
-          </div>
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus size={16} />
-            Nouvelle école
-          </Button>
+        <div>
+          <h1 className="text-2xl font-black text-gray-900">Tableau de bord</h1>
+          <p className="text-gray-500 text-sm mt-0.5">Gestion des écoles clientes</p>
         </div>
 
         {/* Stats financières */}

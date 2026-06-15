@@ -41,7 +41,7 @@ export function AuthProvider({ children }) {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('*, schools(id, name, logo_url, is_active, subscription_expires_at, subscription_plan, type_etablissement)')
+        .select('*, schools(id, name, ia, ief, logo_url, is_active, subscription_expires_at, subscription_plan, type_etablissement)')
         .eq('id', userId)
         .single()
 

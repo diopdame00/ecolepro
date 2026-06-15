@@ -62,13 +62,16 @@ export default function LoginPage() {
   const { signIn, signInWithCode, signInWithQR, activateQRFirstLogin, mustChangePassword, changePassword, user, profile, loading: authLoading } = useAuth()
   const navigate  = useNavigate()
 
-  // Modes : 'email' | 'code' | 'qr_choice' | 'qr_scan' | 'qr_upload' | 'qr_activate' | 'force_change'
+  // Modes : 'email' | 'admin_code' | 'admin_code_pwd' | 'code' | 'qr_choice' | 'qr_scan' | 'qr_upload' | 'qr_activate' | 'force_change'
   const [mode, setMode]       = useState('email')
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
 
   // Email login
-  const [form, setForm] = useState({ email: '', password: '', code: '' })
+  const [form, setForm] = useState({ email: '', password: '', code: '', adminCode: '', adminTempPwd: '' })
+
+  // Admin temp code flow
+  const [adminCodeVerified, setAdminCodeVerified] = useState(null)
 
   // Force change password
   const [pwdForm, setPwdForm]     = useState({ newPwd: '', confirmPwd: '' })
@@ -230,7 +233,53 @@ export default function LoginPage() {
     }
   }
 
-  // ── Force change password ────────────────────────────────
+  // ── Connexion par code temporaire admin ──────────────────
+  async function handleAdminCodeLogin(e) {
+    e.preventDefault()
+    if (!form.adminCode?.trim()) { toast.error('Entrez votre code temporaire'); return }
+    setLoading(true)
+    try {
+      // 1. Vérifier le code dans la table users
+      const { data: userRecord, error: codeError } = await supabase
+        .from('users')
+        .select('id, email, temp_code, temp_code_expires_at, role, school_id')
+        .eq('temp_code', form.adminCode.trim().toUpperCase())
+        .in('role', ['admin', 'secretaire', 'prof', 'surveillant'])
+        .single()
+
+      if (codeError || !userRecord) {
+        throw new Error('Code temporaire introuvable ou invalide')
+      }
+
+      // 2. Vérifier expiration
+      if (userRecord.temp_code_expires_at && new Date(userRecord.temp_code_expires_at) < new Date()) {
+        throw new Error('Ce code a expiré. Demandez une régénération au super administrateur.')
+      }
+
+      // 3. Connexion avec l'email récupéré + mot de passe temporaire
+      //    L'admin doit aussi entrer son mot de passe provisoire
+      setAdminCodeVerified(userRecord)
+      setMode('admin_code_pwd')
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleAdminCodePwdLogin(e) {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      await signIn(adminCodeVerified.email, form.adminTempPwd)
+      toast.success('Connexion réussie !')
+    } catch {
+      toast.error('Mot de passe provisoire incorrect')
+      setLoading(false)
+    }
+  }
+
+
   async function handleChangePassword(e) {
     e.preventDefault()
     const errors = validatePassword(pwdForm.newPwd)
@@ -386,7 +435,78 @@ export default function LoginPage() {
                 </div>
                 <SubmitBtn loading={loading}>Se connecter</SubmitBtn>
               </form>
+              {/* Lien première connexion */}
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => setMode('admin_code')}
+                  className="text-sm text-primary-600 hover:text-primary-800 font-medium underline underline-offset-2">
+                  Première connexion ? Utilisez votre code temporaire
+                </button>
+              </div>
             </>
+          )}
+
+          {/* ── CODE TEMPORAIRE ADMIN (étape 1 : saisie du code) ── */}
+          {effectiveMode === 'admin_code' && (
+            <div>
+              <BackBtn onClick={() => setMode('email')} />
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <KeyRound size={20} className="text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900">Première connexion</h2>
+                  <p className="text-xs text-gray-500">Entrez le code temporaire reçu du super admin</p>
+                </div>
+              </div>
+              <form onSubmit={handleAdminCodeLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Code temporaire</label>
+                  <input type="text" required placeholder="ECO-XXXX-XXXX"
+                    value={form.adminCode}
+                    onChange={e => setForm({ ...form, adminCode: e.target.value.toUpperCase() })}
+                    maxLength={12}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-center font-mono font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-primary-500 uppercase" />
+                </div>
+                <SubmitBtn loading={loading}>Vérifier le code</SubmitBtn>
+              </form>
+            </div>
+          )}
+
+          {/* ── CODE TEMPORAIRE ADMIN (étape 2 : saisie du mot de passe provisoire) ── */}
+          {effectiveMode === 'admin_code_pwd' && adminCodeVerified && (
+            <div>
+              <BackBtn onClick={() => { setMode('admin_code'); setAdminCodeVerified(null) }} />
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                  <CheckCircle2 size={20} className="text-green-600" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900">Code vérifié !</h2>
+                  <p className="text-xs text-gray-500">Entrez maintenant votre mot de passe provisoire</p>
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-sm text-blue-800">
+                Connexion pour <strong>{adminCodeVerified.email}</strong>
+              </div>
+              <form onSubmit={handleAdminCodePwdLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe provisoire</label>
+                  <div className="relative">
+                    <input type={showPwd ? 'text' : 'password'} required placeholder="Mot de passe reçu du super admin"
+                      value={form.adminTempPwd}
+                      onChange={e => setForm({ ...form, adminTempPwd: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 pr-12" />
+                    <button type="button" onClick={() => setShowPwd(!showPwd)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+                <SubmitBtn loading={loading}>Se connecter</SubmitBtn>
+              </form>
+            </div>
           )}
 
           {/* ── CODE ÉLÈVE ── */}

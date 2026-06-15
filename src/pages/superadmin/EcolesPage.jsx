@@ -138,20 +138,25 @@ export default function EcolesPage() {
         throw new Error(result.error || 'Erreur Edge Function')
       }
 
-      // Fermer le formulaire et réinitialiser AVANT d'ouvrir la modale
+      // Capturer les valeurs du formulaire AVANT le reset
+      const schoolName        = form.name
+      const directorName      = form.director_name
+      const directorEmail     = form.director_email
+      const typeEtablissement = form.type_etablissement
+
+      // Fermer le formulaire et réinitialiser
       setModalOpen(false)
       setForm(EMPTY_FORM)
 
-      // Ouvrir la modale des codes
+      // Ouvrir la modale des codes (un seul code : le code admin)
       setCodeModal({
-        school_name:        form.name,
-        director_name:      form.director_name,
-        director_email:     form.director_email,
-        school_temp_code:   result.school_temp_code,
+        school_name:        schoolName,
+        director_name:      directorName,
+        director_email:     directorEmail,
         admin_temp_code:    result.admin_temp_code,
         temp_password:      result.temp_password,
         expires_at:         result.expires_at,
-        type_etablissement: form.type_etablissement,
+        type_etablissement: typeEtablissement,
       })
 
       await fetchEcoles()
@@ -270,7 +275,6 @@ export default function EcolesPage() {
       `École : ${modal.school_name}`,
       `Directeur : ${modal.director_name}`,
       `Email : ${modal.director_email}`,
-      `Code école : ${modal.school_temp_code}`,
       `Code admin : ${modal.admin_temp_code}`,
       `Mot de passe provisoire : ${modal.temp_password}`,
       `Expire le : ${new Date(modal.expires_at).toLocaleString('fr-FR')}`,
@@ -579,7 +583,6 @@ export default function EcolesPage() {
 
             <div className="space-y-3">
               {[
-                { label: 'Code école (activation onboarding)', value: codeModal.school_temp_code, icon: School },
                 { label: "Code admin (première connexion)", value: codeModal.admin_temp_code, icon: Key },
                 { label: 'Mot de passe provisoire', value: codeModal.temp_password, icon: Key },
               ].map(({ label, value, icon: Icon }) => (
@@ -647,8 +650,8 @@ export default function EcolesPage() {
                 </div>
                 <div className="space-y-3">
                   {[
-                    { label: 'Nouveau code école', value: regenResult.school_temp_code },
                     { label: 'Nouveau code admin', value: regenResult.admin_temp_code },
+                    { label: 'Nouveau mot de passe provisoire', value: regenResult.temp_password },
                   ].filter(item => item.value).map(({ label, value }) => (
                     <div key={label}>
                       <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">{label}</label>

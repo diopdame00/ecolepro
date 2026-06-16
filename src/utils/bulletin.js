@@ -61,11 +61,11 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
 
   doc.setFont('helvetica', 'normal')
   if (ecole.ia) {
-    doc.text(ecole.ia, margin, y)
+    doc.text(`IA : ${ecole.ia}`, margin, y)
     y += 5
   }
   if (ecole.ief) {
-    doc.text(ecole.ief, margin, y)
+    doc.text(`IEF : ${ecole.ief}`, margin, y)
     y += 5
   }
   doc.setFont('helvetica', 'bold')

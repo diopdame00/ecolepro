@@ -8,10 +8,9 @@ import { calculerMoyenneGenerale, calculerRangs } from '../../utils/calculs'
 import { Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// ── Helpers identiques à bulletin.js ──────────────────────────
+// Vrais noms de colonnes en base : devoir_1, devoir_2, devoir_3, composition
 function moyenneDevoirs(note) {
-  // Colonnes réelles en base : note_devoir1, note_devoir2 (pas de devoir_3)
-  const vals = [note.note_devoir1, note.note_devoir2]
+  const vals = [note.devoir_1, note.devoir_2, note.devoir_3]
     .filter(v => v !== null && v !== undefined && v !== '')
     .map(Number)
   if (vals.length === 0) return null
@@ -20,24 +19,22 @@ function moyenneDevoirs(note) {
 
 function calculerMoy20(note) {
   const mDev  = moyenneDevoirs(note)
-  // Colonne réelle en base : note_composition
-  const compo = (note.note_composition !== null && note.note_composition !== undefined && note.note_composition !== '')
-                ? Number(note.note_composition) : null
+  const compo = (note.composition !== null && note.composition !== undefined && note.composition !== '')
+                ? Number(note.composition) : null
   if (mDev === null && compo === null) return null
   if (mDev === null) return compo
   if (compo === null) return mDev
   return (mDev + compo) / 2
 }
 
-// ──────────────────────────────────────────────────────────────
 export default function BulletinsPage() {
   const { schoolId, school } = useAuth()
-  const [classes, setClasses]             = useState([])
-  const [eleves, setEleves]               = useState([])
+  const [classes, setClasses]                     = useState([])
+  const [eleves, setEleves]                       = useState([])
   const [selectedClasse, setSelectedClasse]       = useState('')
   const [selectedTrimestre, setSelectedTrimestre] = useState('1')
-  const [loading, setLoading]             = useState(false)
-  const [generating, setGenerating]       = useState(null)
+  const [loading, setLoading]                     = useState(false)
+  const [generating, setGenerating]               = useState(null)
 
   useEffect(() => { if (schoolId) fetchClasses() }, [schoolId])
   useEffect(() => { if (selectedClasse) fetchEleves() }, [selectedClasse, selectedTrimestre])
@@ -50,17 +47,17 @@ export default function BulletinsPage() {
 
   async function fetchEleves() {
     setLoading(true)
-    // On récupère les colonnes réelles : note_devoir1, note_devoir2, note_composition
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('students')
       .select(`
         *,
         grades!inner(
           id,
           matiere_id,
-          note_devoir1,
-          note_devoir2,
-          note_composition,
+          devoir_1,
+          devoir_2,
+          devoir_3,
+          composition,
           moyenne_matiere,
           trimestre,
           statut,
@@ -70,6 +67,8 @@ export default function BulletinsPage() {
       .eq('classe_id', selectedClasse)
       .eq('grades.trimestre', selectedTrimestre)
       .eq('grades.statut', 'valide')
+
+    if (error) console.error('fetchEleves:', error)
     setEleves(data || [])
     setLoading(false)
   }
@@ -80,14 +79,12 @@ export default function BulletinsPage() {
       const notes    = eleve.grades || []
       const matieres = notes.map(n => n.subjects)
 
-      // Moyenne générale calculée avec la nouvelle formule sénégalaise
       const moyGenData = notes.map(n => ({
-        moyenne:      calculerMoy20(n),
-        coefficient:  n.subjects?.coefficient || 1,
+        moyenne:     calculerMoy20(n),
+        coefficient: n.subjects?.coefficient || 1,
       }))
       const moyGen = calculerMoyenneGenerale(moyGenData)
 
-      // Rangs calculés sur la même base pour toute la classe
       const rangsData = eleves.map(e => ({
         id:      e.id,
         moyenne: calculerMoyenneGenerale(
@@ -132,7 +129,6 @@ export default function BulletinsPage() {
     }
   }
 
-  // Moyenne affichée dans la liste (même formule)
   function moyenneEleve(eleve) {
     return calculerMoyenneGenerale(
       (eleve.grades || []).map(n => ({
@@ -146,7 +142,6 @@ export default function BulletinsPage() {
     <DashboardLayout>
       <div className="space-y-6">
 
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Bulletins PDF</h1>
@@ -160,7 +155,6 @@ export default function BulletinsPage() {
           )}
         </div>
 
-        {/* Filtres */}
         <Card>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select label="Classe" value={selectedClasse}
@@ -177,7 +171,6 @@ export default function BulletinsPage() {
           </div>
         </Card>
 
-        {/* Liste élèves */}
         {selectedClasse && (
           <Card className="p-0 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">

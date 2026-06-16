@@ -4,7 +4,59 @@ import {
   Upload, FileText, CheckCircle, AlertCircle,
   X, Download, ChevronRight, Loader
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
+
+// ── Normaliser la date → YYYY-MM-DD ─────────────────────────
+// Accepte : 2012-03-15, 15/03/2012, 15-03-2012, 15.03.2012,
+//           Mars 15 2012, numéro série Excel (41000…)
+function normalizeDate(val) {
+  if (!val && val !== 0) return null
+  const s = String(val).trim()
+  if (!s) return null
+
+  // Numéro série Excel (nombre entier entre 1 et 99999)
+  if (/^\d{4,5}$/.test(s)) {
+    const num = parseInt(s, 10)
+    if (num > 1000 && num < 99999) {
+      const date = XLSX.SSF.parse_date_code(num)
+      if (date) {
+        const mm = String(date.m).padStart(2, '0')
+        const dd = String(date.d).padStart(2, '0')
+        return `${date.y}-${mm}-${dd}`
+      }
+    }
+  }
+
+  // Format ISO déjà correct : YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+
+  // DD/MM/YYYY ou DD-MM-YYYY ou DD.MM.YYYY
+  const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/)
+  if (dmy) {
+    const [, d, m, y] = dmy
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+
+  // MM/DD/YYYY (format américain)
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (mdy) {
+    const [, m, d, y] = mdy
+    // Heuristique : si le premier nombre > 12, c'est DD/MM
+    if (parseInt(m, 10) > 12) {
+      return `${y}-${d.padStart(2, '0')}-${m.padStart(2, '0')}`
+    }
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+
+  // Essai via Date.parse (anglais natif)
+  const parsed = new Date(s)
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10)
+  }
+
+  return null  // format inconnu → on ignore sans planter
+}
 
 // ── Parsing CSV simple (sans librairie) ──────────────────────
 function parseCSV(text) {
@@ -18,6 +70,21 @@ function parseCSV(text) {
     return obj
   }).filter(r => Object.values(r).some(v => v))
   return { headers, rows }
+}
+
+// ── Parsing Excel / ODS via SheetJS ─────────────────────────
+function parseExcel(buffer) {
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: false })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  // raw:true pour récupérer les numéros de série des dates, pas les strings formatées
+  const rows = XLSX.utils.sheet_to_json(ws, { raw: true, defval: '' })
+  if (rows.length === 0) return { headers: [], rows: [] }
+  const headers = Object.keys(rows[0])
+  return { headers, rows: rows.map(r => {
+    const obj = {}
+    headers.forEach(h => { obj[h] = r[h] ?? '' })
+    return obj
+  })}
 }
 
 // ── Colonnes attendues pour les élèves ───────────────────────
@@ -85,8 +152,20 @@ export default function ImportSmart({ schoolId, classes, onSuccess }) {
     setFileName(file.name)
 
     try {
-      const text = await file.text()
-      const { headers, rows } = parseCSV(text)
+      let headers, rows
+
+      const ext = file.name.split('.').pop().toLowerCase()
+
+      if (ext === 'csv' || ext === 'txt') {
+        const text = await file.text()
+        ;({ headers, rows } = parseCSV(text))
+      } else if (['xlsx', 'xls', 'ods'].includes(ext)) {
+        const buffer = await file.arrayBuffer()
+        ;({ headers, rows } = parseExcel(buffer))
+      } else {
+        toast.error('Format non supporté. Utilisez CSV, Excel (.xlsx/.xls) ou ODS.')
+        return
+      }
 
       if (headers.length === 0 || rows.length === 0) {
         toast.error('Fichier vide ou format invalide')
@@ -138,7 +217,9 @@ export default function ImportSmart({ schoolId, classes, onSuccess }) {
         sexe,
         classe_id:       classe?.id || null,
         classe_nom:      classeNom,
-        date_naissance:  mapping.date_naissance ? row[mapping.date_naissance]?.trim() || null : null,
+        date_naissance:  mapping.date_naissance
+          ? normalizeDate(row[mapping.date_naissance]) 
+          : null,
         contact_parent:  mapping.contact_parent ? row[mapping.contact_parent]?.trim() || null : null,
         _valid:          rowErrs.length === 0,
         _errors:         rowErrs,
@@ -220,8 +301,9 @@ export default function ImportSmart({ schoolId, classes, onSuccess }) {
   if (step === 'upload') return (
     <div className="space-y-4">
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
-        Importez un fichier <strong>CSV</strong> avec les colonnes : prénom, nom, sexe, classe.<br />
-        Les colonnes date de naissance et contact parent sont optionnelles.
+        Importez un fichier <strong>CSV, Excel (.xlsx/.xls) ou ODS</strong> avec les colonnes : prénom, nom, sexe, classe.<br />
+        Les colonnes date de naissance et contact parent sont optionnelles.<br />
+        <span className="text-xs text-blue-600">Formats de date acceptés : 15/03/2012, 2012-03-15, fichiers Excel avec cellules date.</span>
       </div>
 
       {/* Zone drop */}
@@ -234,9 +316,9 @@ export default function ImportSmart({ schoolId, classes, onSuccess }) {
         </div>
         <div className="text-center">
           <p className="font-semibold text-gray-900">Cliquez pour choisir un fichier</p>
-          <p className="text-sm text-gray-500 mt-1">CSV uniquement — séparateur virgule ou point-virgule</p>
+          <p className="text-sm text-gray-500 mt-1">CSV, Excel (.xlsx / .xls) ou ODS — virgule ou point-virgule</p>
         </div>
-        <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFile} />
+        <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.xls,.ods" className="hidden" onChange={handleFile} />
       </div>
 
       {/* Télécharger modèle */}
@@ -342,16 +424,17 @@ export default function ImportSmart({ schoolId, classes, onSuccess }) {
 
         {/* Table aperçu */}
         <div className="border border-gray-200 rounded-xl overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2 grid grid-cols-4 gap-2 text-xs font-bold text-gray-500 uppercase">
-            <span>Prénom</span><span>Nom</span><span>Classe</span><span>Sexe</span>
+          <div className="bg-gray-50 px-4 py-2 grid grid-cols-5 gap-2 text-xs font-bold text-gray-500 uppercase">
+            <span>Prénom</span><span>Nom</span><span>Classe</span><span>Sexe</span><span>Naissance</span>
           </div>
           <div className="divide-y divide-gray-100 max-h-48 overflow-y-auto">
             {preview.slice(0, 50).map((r, i) => (
-              <div key={i} className={`px-4 py-2 grid grid-cols-4 gap-2 text-sm ${r._valid ? '' : 'bg-red-50'}`}>
+              <div key={i} className={`px-4 py-2 grid grid-cols-5 gap-2 text-sm ${r._valid ? '' : 'bg-red-50'}`}>
                 <span className={r._valid ? 'text-gray-900' : 'text-red-500'}>{r.prenom || '—'}</span>
                 <span className={r._valid ? 'text-gray-900' : 'text-red-500'}>{r.nom || '—'}</span>
                 <span className="text-gray-600">{r.classe_nom || '—'}</span>
                 <span className="text-gray-600">{r.sexe}</span>
+                <span className="text-gray-600">{r.date_naissance || '—'}</span>
               </div>
             ))}
           </div>

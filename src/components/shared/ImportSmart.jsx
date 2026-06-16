@@ -97,7 +97,6 @@ function parseExcel(buffer) {
     })
   }
 }
-}
 
 // ── Colonnes attendues pour les élèves ───────────────────────
 const COLONNES_ELEVE = [

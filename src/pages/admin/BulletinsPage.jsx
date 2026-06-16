@@ -61,7 +61,7 @@ export default function BulletinsPage() {
           moyenne_matiere,
           trimestre,
           statut,
-          subjects:matiere_id(nom, coefficient)
+          subjects(nom, coefficient)
         )
       `)
       .eq('classe_id', selectedClasse)

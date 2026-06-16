@@ -10,7 +10,8 @@ import toast from 'react-hot-toast'
 
 // ── Helpers identiques à bulletin.js ──────────────────────────
 function moyenneDevoirs(note) {
-  const vals = [note.devoir_1, note.devoir_2, note.devoir_3]
+  // Colonnes réelles en base : note_devoir1, note_devoir2 (pas de devoir_3)
+  const vals = [note.note_devoir1, note.note_devoir2]
     .filter(v => v !== null && v !== undefined && v !== '')
     .map(Number)
   if (vals.length === 0) return null
@@ -19,8 +20,9 @@ function moyenneDevoirs(note) {
 
 function calculerMoy20(note) {
   const mDev  = moyenneDevoirs(note)
-  const compo = (note.composition !== null && note.composition !== undefined && note.composition !== '')
-                ? Number(note.composition) : null
+  // Colonne réelle en base : note_composition
+  const compo = (note.note_composition !== null && note.note_composition !== undefined && note.note_composition !== '')
+                ? Number(note.note_composition) : null
   if (mDev === null && compo === null) return null
   if (mDev === null) return compo
   if (compo === null) return mDev
@@ -48,7 +50,7 @@ export default function BulletinsPage() {
 
   async function fetchEleves() {
     setLoading(true)
-    // On récupère explicitement devoir_1/2/3 + composition + rang
+    // On récupère les colonnes réelles : note_devoir1, note_devoir2, note_composition
     const { data } = await supabase
       .from('students')
       .select(`
@@ -56,15 +58,13 @@ export default function BulletinsPage() {
         grades!inner(
           id,
           matiere_id,
-          devoir_1,
-          devoir_2,
-          devoir_3,
-          composition,
+          note_devoir1,
+          note_devoir2,
+          note_composition,
           moyenne_matiere,
-          rang,
           trimestre,
           statut,
-          subjects(nom, coefficient)
+          subjects:matiere_id(nom, coefficient)
         )
       `)
       .eq('classe_id', selectedClasse)

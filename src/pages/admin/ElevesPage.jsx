@@ -138,7 +138,7 @@ export default function ElevesPage() {
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setImportOpen(true)}>
-              <Upload size={15} /> Import CSV
+              <Upload size={15} /> Importer
             </Button>
             <Button onClick={() => setModalOpen(true)}>
               <Plus size={16} /> Ajouter un élève
@@ -174,10 +174,10 @@ export default function ElevesPage() {
         ) : elevesFiltres.length === 0 ? (
           <Card>
             <EmptyState icon={Users} title="Aucun élève"
-              description="Ajoutez des élèves ou importez un fichier CSV"
+              description="Ajoutez des élèves manuellement ou importez un fichier (CSV, Excel, ODS)"
               action={
                 <div className="flex gap-2">
-                  <Button variant="secondary" onClick={() => setImportOpen(true)}><Upload size={15} />CSV</Button>
+                  <Button variant="secondary" onClick={() => setImportOpen(true)}><Upload size={15} />Importer</Button>
                   <Button onClick={() => setModalOpen(true)}><Plus size={15} />Ajouter</Button>
                 </div>
               } />
@@ -298,7 +298,7 @@ export default function ElevesPage() {
       </Modal>
 
       {/* ── Modale import CSV ── */}
-      <Modal isOpen={importOpen} onClose={() => setImportOpen(false)} title="Import CSV — Élèves" size="lg">
+      <Modal isOpen={importOpen} onClose={() => setImportOpen(false)} title="Importer des élèves" size="lg">
         <ImportSmart
           type="eleves"
           schoolId={schoolId}

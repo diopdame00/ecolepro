@@ -9,24 +9,36 @@ import toast from 'react-hot-toast'
 
 // ── Normaliser la date → YYYY-MM-DD ─────────────────────────
 // Accepte : 2012-03-15, 15/03/2012, 15-03-2012, 15.03.2012,
-//           Mars 15 2012, numéro série Excel (41000…)
+//           numéros série Excel (ex: 41275), objets Date JS
 function normalizeDate(val) {
-  if (!val && val !== 0) return null
+  if (val === null || val === undefined || val === '') return null
+
+  // Objet Date JS (produit par cellDates:true dans SheetJS)
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null
+    const y  = val.getFullYear()
+    const m  = String(val.getMonth() + 1).padStart(2, '0')
+    const d  = String(val.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  // Numéro série Excel brut (entier, ex: 41275 = 15/01/2013)
+  if (typeof val === 'number') {
+    // Epoch Excel : 1 = 1 janvier 1900 (avec le bug du 29/02/1900)
+    const EXCEL_EPOCH = new Date(1899, 11, 30) // 30 déc 1899
+    const ms = val * 86400000
+    const date = new Date(EXCEL_EPOCH.getTime() + ms)
+    if (!isNaN(date.getTime()) && date.getFullYear() > 1900) {
+      const y = date.getFullYear()
+      const m = String(date.getMonth() + 1).padStart(2, '0')
+      const d = String(date.getDate()).padStart(2, '0')
+      return `${y}-${m}-${d}`
+    }
+    return null
+  }
+
   const s = String(val).trim()
   if (!s) return null
-
-  // Numéro série Excel (nombre entier entre 1 et 99999)
-  if (/^\d{4,5}$/.test(s)) {
-    const num = parseInt(s, 10)
-    if (num > 1000 && num < 99999) {
-      const date = XLSX.SSF.parse_date_code(num)
-      if (date) {
-        const mm = String(date.m).padStart(2, '0')
-        const dd = String(date.d).padStart(2, '0')
-        return `${date.y}-${mm}-${dd}`
-      }
-    }
-  }
 
   // Format ISO déjà correct : YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
@@ -38,24 +50,20 @@ function normalizeDate(val) {
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
   }
 
-  // MM/DD/YYYY (format américain)
-  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (mdy) {
-    const [, m, d, y] = mdy
-    // Heuristique : si le premier nombre > 12, c'est DD/MM
-    if (parseInt(m, 10) > 12) {
-      return `${y}-${d.padStart(2, '0')}-${m.padStart(2, '0')}`
-    }
+  // YYYY/MM/DD
+  const ymd = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/)
+  if (ymd) {
+    const [, y, m, d] = ymd
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
   }
 
-  // Essai via Date.parse (anglais natif)
+  // Essai via Date.parse en dernier recours
   const parsed = new Date(s)
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().slice(0, 10)
   }
 
-  return null  // format inconnu → on ignore sans planter
+  return null
 }
 
 // ── Parsing CSV simple (sans librairie) ──────────────────────
@@ -74,17 +82,21 @@ function parseCSV(text) {
 
 // ── Parsing Excel / ODS via SheetJS ─────────────────────────
 function parseExcel(buffer) {
-  const wb = XLSX.read(buffer, { type: 'array', cellDates: false })
+  // cellDates:true → SheetJS convertit les cellules date en objets Date JS
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
   const ws = wb.Sheets[wb.SheetNames[0]]
-  // raw:true pour récupérer les numéros de série des dates, pas les strings formatées
-  const rows = XLSX.utils.sheet_to_json(ws, { raw: true, defval: '' })
+  const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' })
   if (rows.length === 0) return { headers: [], rows: [] }
   const headers = Object.keys(rows[0])
-  return { headers, rows: rows.map(r => {
-    const obj = {}
-    headers.forEach(h => { obj[h] = r[h] ?? '' })
-    return obj
-  })}
+  return {
+    headers,
+    rows: rows.map(r => {
+      const obj = {}
+      headers.forEach(h => { obj[h] = r[h] ?? '' })
+      return obj
+    })
+  }
+}
 }
 
 // ── Colonnes attendues pour les élèves ───────────────────────

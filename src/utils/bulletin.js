@@ -168,7 +168,13 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
   let totalMoyPond    = 0
 
   matieres.forEach((matiere, idx) => {
-    const note = notes.find(n => n.matiere_id === matiere.id) || {}
+    // Chercher la note par matiere_id (subject_id) — on essaie les deux IDs possibles
+    const note = notes.find(n =>
+      n.matiere_id === matiere.id ||
+      n.subjects?.id === matiere.id
+    ) || {}
+    // Coefficient : depuis matiere en priorité, sinon depuis subjects de la note
+    const coef = matiere.coefficient ?? note.subjects?.coefficient ?? 1
     const bg   = idx % 2 === 0 ? blanc : grisLight
 
     doc.setFillColor(...bg)
@@ -189,10 +195,10 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
     // Calculs
     const mDev   = moyenneDevoirs(note)                         // moyenne des devoirs
     const moy20  = calculerMoy20(note)                          // MOY/20
-    const moyX   = moy20 !== null ? moy20 * matiere.coefficient : null  // MOY X
+    const moyX   = moy20 !== null ? moy20 * coef : null  // MOY X
 
     if (moyX !== null) {
-      totalCoef    += matiere.coefficient
+      totalCoef    += coef
       totalMoyPond += moyX
     }
 
@@ -201,7 +207,7 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
       formatNote(mDev),
       formatNote(note.composition),
       formatNote(moy20),
-      String(matiere.coefficient),
+      String(coef),
       moyX !== null ? formatNote(moyX) : '-',
       note.rang ? String(note.rang) : '-',
       getAppreciation(moy20),
@@ -236,14 +242,20 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
   const xCoef = margin + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3]
   doc.text(String(totalCoef), xCoef + colWidths[4] / 2, y + 4.8, { align: 'center' })
 
-  // Position colonne MOY X
+  // Position colonne MOY X — afficher la somme pondérée totale (totalMoyPond)
+  // La moyenne générale /20 est calculée plus bas (totalMoyPond / totalCoef)
+  const moyenneGeneralePDF = totalCoef > 0 ? totalMoyPond / totalCoef : null
   const xMoyX = xCoef + colWidths[4]
-  doc.text(formatNote(totalMoyPond), xMoyX + colWidths[5] / 2, y + 4.8, { align: 'center' })
+  doc.text(
+    moyenneGeneralePDF !== null ? formatNote(moyenneGeneralePDF) : '-',
+    xMoyX + colWidths[5] / 2, y + 4.8, { align: 'center' }
+  )
   y += rowH
 
   // ── Ligne Moyenne / Rang / Retards / Absences ──
   y += 3
-  const moyGen = resultats?.moyenne_generale
+  // Utiliser la moyenne calculée localement si celle des résultats est absente
+  const moyGen = resultats?.moyenne_generale ?? moyenneGeneralePDF
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...noir)

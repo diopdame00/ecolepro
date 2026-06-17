@@ -24,7 +24,6 @@ const navItems = {
     { to: '/admin/classes',           icon: BookOpen,        label: 'Classes' },
     { to: '/admin/profs',             icon: GraduationCap,   label: 'Professeurs' },
     { to: '/admin/notes',             icon: ClipboardCheck,  label: 'Validation notes' },
-    { to: '/admin/cours',             icon: Clock,           label: 'Validation cours' },
     { to: '/admin/bulletins',         icon: FileText,        label: 'Bulletins' },
     { to: '/admin/emploi-du-temps',   icon: CalendarDays,    label: 'Emploi du temps' },
     { to: '/admin/salaires',          icon: DollarSign,      label: 'Salaires' },

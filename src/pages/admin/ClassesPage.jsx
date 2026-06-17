@@ -14,9 +14,35 @@ const NIVEAUX_PAR_CYCLE = {
   prescolaire:  ['Petite Section', 'Moyenne Section', 'Grande Section'],
   primaire:     ['CI', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'],
   college:      ['6ème', '5ème', '4ème', '3ème'],
-  lycee:        ['2nde', '1ère L', '1ère S', 'Tale L', 'Tale S', 'Tale STEG'],
+  lycee:        ['2nde L', '2nde S', '1ère L1', '1ère L2', '1ère S1', '1ère S2', 'Tle L1', 'Tle L2', 'Tle S1', 'Tle S2'],
   franco_arabe: ['CI', 'CP', 'CE1', 'CE2', 'CM1', 'CM2', '6ème', '5ème', '4ème', '3ème'],
 }
+
+// ── Structure lycée par série ─────────────────────────────────
+// Série → niveaux disponibles avec leurs labels de groupement
+const LYCEE_SERIES = {
+  S: {
+    label: 'Série Scientifique',
+    color: 'blue',
+    emoji: '🔬',
+    niveaux: [
+      { groupe: 'Seconde', options: ['2nde S'] },
+      { groupe: 'Première', options: ['1ère S1', '1ère S2'] },
+      { groupe: 'Terminale', options: ['Tle S1', 'Tle S2'] },
+    ],
+  },
+  L: {
+    label: 'Série Littéraire',
+    color: 'purple',
+    emoji: '📚',
+    niveaux: [
+      { groupe: 'Seconde', options: ['2nde L'] },
+      { groupe: 'Première', options: ['1ère L1', '1ère L2'] },
+      { groupe: 'Terminale', options: ['Tle L1', 'Tle L2'] },
+    ],
+  },
+}
+
 const VARIANTES    = ['A', 'B', 'C', 'D', 'E']
 const CYCLE_LABELS = {
   prescolaire: 'Préscolaire', primaire: 'Primaire',
@@ -45,8 +71,11 @@ export default function ClassesPage() {
   const [selectedNiveau, setSelectedNiveau]     = useState('')
   const [selectedVariante, setSelectedVariante] = useState('A')
   const [annee, setAnnee]                       = useState(anneeEnCours())
+  // Lycée uniquement : série ('S' | 'L' | '')
+  const [selectedSerie, setSelectedSerie]       = useState('')
 
-  const niveaux   = NIVEAUX_PAR_CYCLE[cycle] || NIVEAUX_PAR_CYCLE.college
+  const niveaux = NIVEAUX_PAR_CYCLE[cycle] || NIVEAUX_PAR_CYCLE.college
+  const isLycee = cycle === 'lycee'
   const nomClasse = selectedNiveau ? `${selectedNiveau} ${selectedVariante}` : ''
 
   useEffect(() => { if (schoolId) fetchClasses() }, [schoolId])
@@ -62,7 +91,8 @@ export default function ClassesPage() {
   }
 
   function ouvrirModal(niveauPrefill = '') {
-    setSelectedNiveau(niveauPrefill || niveaux[0] || '')
+    setSelectedSerie('')
+    setSelectedNiveau(niveauPrefill || (isLycee ? '' : (niveaux[0] || '')))
     setSelectedVariante('A')
     setAnnee(anneeEnCours())
     setModalOpen(true)
@@ -224,36 +254,145 @@ export default function ClassesPage() {
       {/* ── Modale création ── */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Créer une classe">
         <div className="space-y-5">
+
+          {/* Aperçu nom classe */}
           {nomClasse && (
             <div className="bg-primary-50 border border-primary-200 rounded-xl p-4 text-center">
               <p className="text-xs text-primary-600 font-medium uppercase tracking-wide mb-1">Classe qui sera créée</p>
               <p className="text-3xl font-black text-primary-700">{nomClasse}</p>
             </div>
           )}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Niveau *</label>
-            <div className="grid grid-cols-2 gap-2">
-              {niveaux.map(n => (
-                <button key={n} onClick={() => setSelectedNiveau(n)}
-                  className={`py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all text-left
-                    ${selectedNiveau === n ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Section *</label>
-            <div className="flex gap-2">
-              {VARIANTES.map(v => (
-                <button key={v} onClick={() => setSelectedVariante(v)}
-                  className={`w-12 h-12 rounded-xl text-sm font-black border-2 transition-all
-                    ${selectedVariante === v ? 'border-primary-500 bg-primary-500 text-white' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                  {v}
-                </button>
-              ))}
-            </div>
-          </div>
+
+          {/* ══ LYCÉE : sélection en 2 étapes ══ */}
+          {isLycee ? (
+            <>
+              {/* Étape 1 : Série */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Série *
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.entries(LYCEE_SERIES).map(([key, serie]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setSelectedSerie(key)
+                        setSelectedNiveau('') // reset niveau quand on change de série
+                        setSelectedVariante('A')
+                      }}
+                      className={`py-4 px-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1.5
+                        ${selectedSerie === key
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
+                    >
+                      <span className="text-2xl">{serie.emoji}</span>
+                      <span className="text-sm font-bold">{serie.label}</span>
+                      <div className="flex flex-wrap justify-center gap-1 mt-1">
+                        {serie.niveaux.flatMap(n => n.options).map(opt => (
+                          <span key={opt}
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium
+                              ${selectedSerie === key
+                                ? 'bg-primary-100 text-primary-700'
+                                : 'bg-gray-100 text-gray-500'}`}>
+                            {opt}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Étape 2 : Niveau (affiché seulement si série choisie) */}
+              {selectedSerie && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Niveau *
+                  </label>
+                  <div className="space-y-3">
+                    {LYCEE_SERIES[selectedSerie].niveaux.map(({ groupe, options }) => (
+                      <div key={groupe}>
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1.5">
+                          {groupe}
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          {options.map(opt => (
+                            <button
+                              key={opt}
+                              onClick={() => setSelectedNiveau(opt)}
+                              className={`px-4 py-2.5 rounded-xl text-sm font-bold border-2 transition-all
+                                ${selectedNiveau === opt
+                                  ? 'border-primary-500 bg-primary-500 text-white'
+                                  : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:bg-primary-50'}`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Section (variante : A, B, C…) — affiché si niveau choisi */}
+              {selectedNiveau && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Section (optionnel — pour distinguer plusieurs classes du même niveau)
+                  </label>
+                  <div className="flex gap-2">
+                    {VARIANTES.map(v => (
+                      <button key={v} onClick={() => setSelectedVariante(v)}
+                        className={`w-12 h-12 rounded-xl text-sm font-black border-2 transition-all
+                          ${selectedVariante === v
+                            ? 'border-primary-500 bg-primary-500 text-white'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Ex : deux classes de Tle S1 → "Tle S1 A" et "Tle S1 B"
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            /* ══ COLLÈGE / PRIMAIRE / etc. : logique originale ══ */
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Niveau *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {niveaux.map(n => (
+                    <button key={n} onClick={() => setSelectedNiveau(n)}
+                      className={`py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all text-left
+                        ${selectedNiveau === n
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Section *</label>
+                <div className="flex gap-2">
+                  {VARIANTES.map(v => (
+                    <button key={v} onClick={() => setSelectedVariante(v)}
+                      className={`w-12 h-12 rounded-xl text-sm font-black border-2 transition-all
+                        ${selectedVariante === v
+                          ? 'border-primary-500 bg-primary-500 text-white'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Année scolaire — commun à tous */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Année scolaire *</label>
             <select value={annee} onChange={e => setAnnee(e.target.value)}
@@ -265,9 +404,17 @@ export default function ClassesPage() {
               })}
             </select>
           </div>
+
           <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setModalOpen(false)}>Annuler</Button>
-            <Button className="flex-1" loading={saving} onClick={creerClasse}>
+            <Button variant="secondary" className="flex-1" onClick={() => setModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              className="flex-1"
+              loading={saving}
+              onClick={creerClasse}
+              disabled={!selectedNiveau || (isLycee && !selectedSerie)}
+            >
               <Plus size={15} /> Créer {nomClasse}
             </Button>
           </div>

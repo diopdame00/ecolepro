@@ -43,7 +43,8 @@ export default function PaiementsPage() {
   const { schoolId } = useAuth()
 
   const [paiements, setPaiements] = useState([])
-  const [classes, setClasses]     = useState([])\n  const [loading, setLoading]     = useState(true)
+  const [classes, setClasses]     = useState([])
+  const [loading, setLoading]     = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving]       = useState(false)
   const [activeVue, setActiveVue] = useState('liste') // 'liste' | 'impayes'

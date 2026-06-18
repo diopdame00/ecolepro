@@ -54,10 +54,7 @@ export default function ParentNotes() {
     finally { setDownloading(false) }
   }
 
-  const moyenneGenerale = notes.length > 0
-    ? notes.reduce((acc, n) => acc + (n.moyenne_matiere || 0) * n.coefficient, 0) /
-      notes.reduce((acc, n) => acc + n.coefficient, 0)
-    : null
+  const moyenneGenerale = null // Calcul non applicable — affiché par l'admin uniquement
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -117,36 +114,75 @@ export default function ParentNotes() {
           </div>
         ) : (
           <>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {notes.map((note, i) => (
-                <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  {/* En-tête matière */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
                     <div>
-                      <p className="font-semibold text-gray-900">{note.matiere_nom}</p>
-                      <p className="text-xs text-gray-400">Coeff. {note.coefficient}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-xl font-black ${
-                        (note.moyenne_matiere || 0) >= 10 ? 'text-green-600' : 'text-red-500'
-                      }`}>
-                        {formatNote(note.moyenne_matiere)}
-                        <span className="text-xs text-gray-400 font-normal">/20</span>
+                      <p className="font-bold text-gray-900">{note.matiere_nom}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {note.prof_nom ? `Prof. ${note.prof_nom}` : 'Prof. non assigné'}
+                        {note.coefficient ? ` · Coeff. ${note.coefficient}` : ''}
                       </p>
-                      <p className="text-xs text-gray-400">{getAppreciation(note.moyenne_matiere)}</p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                    {note.note_devoir1 != null && (
-                      <span className="bg-gray-100 px-2 py-0.5 rounded">D1 : {formatNote(note.note_devoir1)}</span>
-                    )}
-                    {note.note_devoir2 != null && (
-                      <span className="bg-gray-100 px-2 py-0.5 rounded">D2 : {formatNote(note.note_devoir2)}</span>
-                    )}
-                    {note.note_composition != null && (
-                      <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded">
-                        Compo : {formatNote(note.note_composition)}
-                      </span>
-                    )}
+
+                  {/* Détail des notes — devoirs + composition */}
+                  <div className="px-4 py-3 space-y-2">
+                    {/* Devoirs en grille 3 colonnes */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Devoir 1', value: note.devoir_1 },
+                        { label: 'Devoir 2', value: note.devoir_2 },
+                        { label: 'Devoir 3', value: note.devoir_3 },
+                      ].map(({ label, value }) => (
+                        <div key={label}
+                          className={`flex flex-col items-center justify-center px-2 py-3 rounded-xl
+                            ${value != null
+                              ? 'bg-gray-50 border border-gray-100'
+                              : 'bg-gray-50/40 border border-dashed border-gray-200'}`}>
+                          <span className="text-xs font-medium text-gray-400 mb-1">{label}</span>
+                          <span className={`text-lg font-black ${
+                            value == null  ? 'text-gray-300'
+                            : value >= 14  ? 'text-green-600'
+                            : value >= 10  ? 'text-blue-600'
+                            : value >= 8   ? 'text-orange-500'
+                            : 'text-red-500'
+                          }`}>
+                            {value != null ? formatNote(value) : '—'}
+                          </span>
+                          {value != null && (
+                            <span className="text-xs text-gray-300">/20</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Composition — pleine largeur, style distinct */}
+                    <div className={`flex items-center justify-between px-4 py-3 rounded-xl
+                      ${note.composition != null
+                        ? 'bg-blue-50 border border-blue-200'
+                        : 'bg-gray-50/40 border border-dashed border-gray-200'}`}>
+                      <div>
+                        <p className="text-sm font-semibold text-blue-700">Composition</p>
+                        <p className="text-xs text-blue-400">Examen trimestriel</p>
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-2xl font-black ${
+                          note.composition == null  ? 'text-gray-300'
+                          : note.composition >= 14  ? 'text-green-600'
+                          : note.composition >= 10  ? 'text-blue-600'
+                          : note.composition >= 8   ? 'text-orange-500'
+                          : 'text-red-500'
+                        }`}>
+                          {note.composition != null ? formatNote(note.composition) : '—'}
+                        </span>
+                        {note.composition != null && (
+                          <span className="text-xs text-gray-400 ml-1">/20</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}

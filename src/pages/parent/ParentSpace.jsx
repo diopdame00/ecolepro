@@ -175,6 +175,22 @@ export default function ParentSpace() {
 
   const soldeRestant = paiements.reduce((acc, p) => acc + (p.solde || 0), 0)
 
+  // Statut mensualité du mois en cours
+  const maintenant = new Date()
+  const moisCourant = maintenant.getMonth() + 1
+  const anneeCourante = maintenant.getFullYear()
+  const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin',
+                     'Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+  const nomMoisCourant = MOIS_NOMS[moisCourant - 1]
+
+  const paiementMoisCourant = paiements.find(p =>
+    p.type_paiement === 'scolarite' &&
+    Number(p.mois) === moisCourant &&
+    Number(p.annee) === anneeCourante
+  )
+  const mensualiteAJour = paiementMoisCourant?.statut === 'complet'
+  const mensualitePartielle = paiementMoisCourant?.statut === 'partiel'
+
   const tabs = [
     { id: 'notes', label: 'Notes', icon: Star },
     { id: 'paiements', label: 'Paiements', icon: CreditCard },
@@ -222,19 +238,32 @@ export default function ParentSpace() {
                 </>
               )}
             </div>
-            <div className={`rounded-xl p-3 text-center ${soldeRestant > 0 ? 'bg-red-500/40' : 'bg-white/15'}`}>
-              {soldeRestant > 0 ? (
+            <div className={`rounded-xl p-3 text-center ${
+              mensualiteAJour ? 'bg-white/15' :
+              mensualitePartielle ? 'bg-yellow-500/40' :
+              'bg-red-500/40'
+            }`}>
+              {mensualiteAJour ? (
                 <>
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <AlertCircle size={14} />
+                  <p className="text-2xl font-black">✓</p>
+                  <p className="text-xs text-white/60 font-semibold">Paiements à jour</p>
+                  <p className="text-xs text-white/50">{nomMoisCourant}</p>
+                </>
+              ) : mensualitePartielle ? (
+                <>
+                  <div className="flex items-center justify-center mb-1">
+                    <AlertCircle size={16} />
                   </div>
-                  <p className="text-lg font-black">{soldeRestant.toLocaleString('fr-FR')} F</p>
-                  <p className="text-xs text-white/60">Restant à payer</p>
+                  <p className="text-xs font-black">Paiement partiel</p>
+                  <p className="text-xs text-white/70">{nomMoisCourant}</p>
                 </>
               ) : (
                 <>
-                  <p className="text-2xl font-black">✓</p>
-                  <p className="text-xs text-white/60">Paiements à jour</p>
+                  <div className="flex items-center justify-center mb-1">
+                    <AlertCircle size={16} />
+                  </div>
+                  <p className="text-xs font-black">Mensualité impayée</p>
+                  <p className="text-xs text-white/70">{nomMoisCourant}</p>
                 </>
               )}
             </div>
@@ -345,6 +374,47 @@ export default function ParentSpace() {
         {/* Paiements */}
         {activeTab === 'paiements' && (
           <div className="space-y-3">
+
+            {/* Statut mensualité du mois */}
+            <div className={`rounded-xl p-4 flex items-center gap-4 ${
+              mensualiteAJour ? 'bg-green-50 border border-green-200' :
+              mensualitePartielle ? 'bg-yellow-50 border border-yellow-200' :
+              'bg-red-50 border border-red-200'
+            }`}>
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 text-xl font-black ${
+                mensualiteAJour ? 'bg-green-100 text-green-600' :
+                mensualitePartielle ? 'bg-yellow-100 text-yellow-600' :
+                'bg-red-100 text-red-500'
+              }`}>
+                {mensualiteAJour ? '✓' : '!'}
+              </div>
+              <div>
+                <p className={`font-bold text-sm ${
+                  mensualiteAJour ? 'text-green-700' :
+                  mensualitePartielle ? 'text-yellow-700' :
+                  'text-red-600'
+                }`}>
+                  {mensualiteAJour
+                    ? 'Mensualité payée'
+                    : mensualitePartielle
+                      ? 'Paiement partiel enregistré'
+                      : 'Mensualité en attente'}
+                </p>
+                <p className={`text-xs mt-0.5 ${
+                  mensualiteAJour ? 'text-green-500' :
+                  mensualitePartielle ? 'text-yellow-500' :
+                  'text-red-400'
+                }`}>
+                  {mensualiteAJour
+                    ? `Mois de ${nomMoisCourant} — à jour`
+                    : `Mois de ${nomMoisCourant} — réglez dès que possible`}
+                </p>
+              </div>
+            </div>
+
+            {/* Historique */}
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide px-1">Historique des paiements</p>
+
             {paiements.length === 0 ? (
               <div className="bg-white rounded-xl p-8 text-center text-gray-400">
                 <CreditCard size={32} className="mx-auto mb-2 opacity-30" />
@@ -364,16 +434,18 @@ export default function ParentSpace() {
                     </Badge>
                   </div>
                   <div className="flex justify-between text-sm text-gray-500">
-                    <span>Montant : {p.montant_du?.toLocaleString('fr-FR')} F CFA</span>
+                    <span>{p.montant_paye?.toLocaleString('fr-FR')} F CFA encaissés</span>
                     {p.solde > 0 && (
                       <span className="text-red-500 font-medium">
                         Reste : {p.solde?.toLocaleString('fr-FR')} F
                       </span>
                     )}
                   </div>
-                  {p.date_paiement && (
+                  {p.created_at && (
                     <p className="text-xs text-gray-400 mt-1">
-                      Payé le {new Date(p.date_paiement).toLocaleDateString('fr-FR')}
+                      Enregistré le {new Date(p.created_at).toLocaleDateString('fr-FR', {
+                        day: 'numeric', month: 'long', year: 'numeric'
+                      })}
                     </p>
                   )}
                 </div>

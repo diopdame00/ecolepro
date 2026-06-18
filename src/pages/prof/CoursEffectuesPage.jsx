@@ -167,21 +167,43 @@ export default function CoursEffectuesPage() {
     try {
       const dateCours = getDateCreneau(absenceModal.jour_semaine)
       const duree     = dureeMinutes(absenceModal.heure_debut, absenceModal.heure_fin)
-      const { error } = await supabase.from('course_sessions').insert({
-        school_id:    schoolId,
-        prof_id:      profile.id,
-        classe_id:    absenceModal.classe_id,
-        subject_id:   absenceModal.subject_id,
-        date_cours:      dateCours,
-        heure_debut:     absenceModal.heure_debut,
-        heure_fin:       absenceModal.heure_fin,
-        duree_minutes:   duree > 0 ? duree : null,
-        statut:          'absent',
-        motif_absence:  motif.trim(),
-        notifier_eleves: notifier,
-      })
+
+      const { data: session, error } = await supabase
+        .from('course_sessions')
+        .insert({
+          school_id:       schoolId,
+          prof_id:         profile.id,
+          classe_id:       absenceModal.classe_id,
+          subject_id:      absenceModal.subject_id,
+          date_cours:      dateCours,
+          heure_debut:     absenceModal.heure_debut,
+          heure_fin:       absenceModal.heure_fin,
+          duree_minutes:   duree > 0 ? duree : null,
+          statut:          'absent',
+          motif_absence:   motif.trim(),
+          notifier_eleves: notifier,
+        })
+        .select()
+        .single()
+
       if (error) throw error
-      toast.success('Absence déclarée')
+
+      // ── Notifier l'admin ────────────────────────────────
+      await supabase.from('absence_notifications').insert({
+        school_id:    schoolId,
+        session_id:   session.id,
+        prof_id:      profile.id,
+        prof_name:    `${profile.prenom || ''} ${profile.nom || ''}`.trim(),
+        subject_name: absenceModal.subjects?.nom || '',
+        class_name:   absenceModal.classes?.nom  || '',
+        date_cours:   dateCours,
+        heure_debut:  absenceModal.heure_debut,
+        heure_fin:    absenceModal.heure_fin,
+        motif:        motif.trim(),
+        is_read:      false,
+      })
+
+      toast.success('Absence déclarée — l\'administration a été notifiée')
       setAbsenceModal(null)
       setMotif('')
       setNotifier(true)
@@ -477,26 +499,40 @@ export default function CoursEffectuesPage() {
               />
             </div>
 
-            {/* Toggle notification élèves */}
-            <button
-              onClick={() => setNotifier(!notifier)}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left
-                ${notifier ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white'}`}
-            >
-              <div className={`w-10 h-6 rounded-full transition-all relative shrink-0
-                ${notifier ? 'bg-primary-500' : 'bg-gray-300'}`}>
-                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all
-                  ${notifier ? 'left-5' : 'left-1'}`} />
+            {/* Notifications */}
+            <div className="space-y-2">
+              {/* Admin : toujours notifié */}
+              <div className="flex items-center gap-3 p-3 rounded-xl border border-orange-200 bg-orange-50">
+                <div className="w-10 h-6 rounded-full bg-orange-400 relative shrink-0">
+                  <div className="w-4 h-4 bg-white rounded-full absolute top-1 left-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-orange-800">Notifier l'administration</p>
+                  <p className="text-xs text-orange-600">L'admin reçoit toujours une alerte d'absence</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Notifier les élèves</p>
-                <p className="text-xs text-gray-500">
-                  {notifier
-                    ? "Un bandeau s'affichera sur le dashboard élève/parent"
-                    : "Les élèves ne seront pas informés"}
-                </p>
-              </div>
-            </button>
+
+              {/* Élèves : toggle */}
+              <button
+                onClick={() => setNotifier(!notifier)}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left
+                  ${notifier ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white'}`}
+              >
+                <div className={`w-10 h-6 rounded-full transition-all relative shrink-0
+                  ${notifier ? 'bg-primary-500' : 'bg-gray-300'}`}>
+                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all
+                    ${notifier ? 'left-5' : 'left-1'}`} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Notifier les élèves / parents</p>
+                  <p className="text-xs text-gray-500">
+                    {notifier
+                      ? "Un bandeau s'affichera sur le dashboard parent"
+                      : "Les parents ne seront pas informés"}
+                  </p>
+                </div>
+              </button>
+            </div>
 
             <div className="flex gap-3">
               <Button variant="secondary" className="flex-1" onClick={() => setAbsenceModal(null)}>

@@ -175,6 +175,8 @@ export default function PaiementsPage() {
       setLoadingImpayes(false)
     }
   }
+
+  function ouvrirModal() {
     setStep(1)
     setSelectedClasse(null)
     setEleveSearch('')

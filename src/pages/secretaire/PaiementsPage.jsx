@@ -5,7 +5,8 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Modal, Badge, EmptyState } from '../../components/ui'
 import {
   Wallet, Plus, Search, CheckCircle, AlertCircle,
-  ChevronRight, X, Users, BookOpen, Calendar, Zap
+  ChevronRight, X, Users, BookOpen, Calendar, Zap,
+  AlertTriangle, Filter
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -42,15 +43,22 @@ export default function PaiementsPage() {
   const { schoolId } = useAuth()
 
   const [paiements, setPaiements] = useState([])
-  const [classes, setClasses]     = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [classes, setClasses]     = useState([])\n  const [loading, setLoading]     = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving]       = useState(false)
+  const [activeVue, setActiveVue] = useState('liste') // 'liste' | 'impayes'
 
   // Filtres liste
   const [filterClasse, setFilterClasse] = useState('')
   const [filterStatut, setFilterStatut] = useState('')
   const [search, setSearch]             = useState('')
+
+  // Impayés
+  const [impayesClasse, setImpayesClasse]   = useState('')
+  const [impayesMois, setImpayesMois]       = useState(String(new Date().getMonth() + 1).padStart(2, '0'))
+  const [impayesAnnee, setImpayesAnnee]     = useState(String(new Date().getFullYear()))
+  const [elevesImpayes, setElevesImpayes]   = useState([])
+  const [loadingImpayes, setLoadingImpayes] = useState(false)
 
   // ── Circuit rapide (état étape par étape) ─────────────────
   const [step, setStep]                 = useState(1) // 1,2,3,4
@@ -136,7 +144,36 @@ export default function PaiementsPage() {
     }
   }
 
-  function ouvrirModal() {
+  async function fetchElevesImpayes() {
+    if (!impayesClasse) return
+    setLoadingImpayes(true)
+    try {
+      // Récupérer tous les élèves de la classe
+      const { data: tousEleves } = await supabase
+        .from('students')
+        .select('id, prenom, nom')
+        .eq('school_id', schoolId)
+        .eq('classe_id', impayesClasse)
+        .order('nom')
+
+      if (!tousEleves) { setElevesImpayes([]); return }
+
+      // Récupérer ceux qui ont payé ce mois (statut complet)
+      const { data: payants } = await supabase
+        .from('student_payments')
+        .select('student_id')
+        .eq('school_id', schoolId)
+        .eq('type_paiement', 'scolarite')
+        .eq('mois', Number(impayesMois))
+        .eq('annee', Number(impayesAnnee))
+        .eq('statut', 'complet')
+
+      const idPayants = new Set((payants || []).map(p => p.student_id))
+      setElevesImpayes(tousEleves.filter(e => !idPayants.has(e.id)))
+    } finally {
+      setLoadingImpayes(false)
+    }
+  }
     setStep(1)
     setSelectedClasse(null)
     setEleveSearch('')
@@ -309,6 +346,26 @@ export default function PaiementsPage() {
           </Button>
         </div>
 
+        {/* Onglets Vue */}
+        <div className="flex bg-white rounded-xl shadow-sm p-1 gap-1 w-fit">
+          <button
+            onClick={() => setActiveVue('liste')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all
+              ${activeVue === 'liste' ? 'bg-primary-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <Wallet size={14} /> Tous les paiements
+          </button>
+          <button
+            onClick={() => setActiveVue('impayes')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all
+              ${activeVue === 'impayes' ? 'bg-red-500 text-white shadow' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <AlertTriangle size={14} /> Impayés du mois
+          </button>
+        </div>
+
+        {/* ── VUE : LISTE DES PAIEMENTS ── */}
+        {activeVue === 'liste' && (<>
         {/* Filtres */}
         <Card className="p-4">
           <div className="flex gap-3 flex-wrap">
@@ -376,6 +433,115 @@ export default function PaiementsPage() {
                 </div>
               </Card>
             ))}
+          </div>
+        )}
+        </>)}
+
+        {/* ── VUE : IMPAYÉS DU MOIS ── */}
+        {activeVue === 'impayes' && (
+          <div className="space-y-4">
+
+            {/* Filtres impayés */}
+            <Card className="p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Filter size={14} /> Sélectionner la classe et le mois
+              </p>
+              <div className="flex gap-3 flex-wrap">
+                <select
+                  value={impayesClasse}
+                  onChange={e => setImpayesClasse(e.target.value)}
+                  className="flex-1 min-w-40 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
+                >
+                  <option value="">Choisir une classe…</option>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                </select>
+                <select
+                  value={impayesMois}
+                  onChange={e => setImpayesMois(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
+                >
+                  {MOIS_OPTIONS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                <select
+                  value={impayesAnnee}
+                  onChange={e => setImpayesAnnee(e.target.value)}
+                  className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
+                >
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 1 + i).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <Button
+                  onClick={fetchElevesImpayes}
+                  disabled={!impayesClasse}
+                  loading={loadingImpayes}
+                  className="bg-red-500 hover:bg-red-600 text-white border-0"
+                >
+                  <Search size={14} /> Voir les impayés
+                </Button>
+              </div>
+            </Card>
+
+            {/* Résultats */}
+            {loadingImpayes ? (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-4 border-red-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : elevesImpayes.length === 0 && impayesClasse ? (
+              <Card className="p-8 text-center">
+                <CheckCircle size={36} className="mx-auto mb-3 text-green-400" />
+                <p className="font-bold text-green-600">Tous les élèves ont payé !</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  {MOIS_LABELS[impayesMois]} {impayesAnnee} — aucun impayé dans cette classe
+                </p>
+              </Card>
+            ) : elevesImpayes.length > 0 ? (
+              <>
+                <div className="flex items-center gap-2 px-1">
+                  <AlertTriangle size={15} className="text-red-500" />
+                  <span className="text-sm font-bold text-red-600">
+                    {elevesImpayes.length} élève(s) n'ont pas payé — {MOIS_LABELS[impayesMois]} {impayesAnnee}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {elevesImpayes.map(e => (
+                    <Card key={e.id} className="p-4 border-l-4 border-l-red-400">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 bg-red-100 rounded-full flex items-center justify-center font-bold text-red-600 text-sm shrink-0">
+                            {e.prenom?.[0]}{e.nom?.[0]}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">{e.prenom} {e.nom}</p>
+                            <p className="text-xs text-red-400">Mensualité non réglée</p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const classe = classes.find(c => c.id === impayesClasse)
+                            setSelectedClasse(classe)
+                            setSelectedEleve(e)
+                            setTypePaiement('scolarite')
+                            setMoisPaiement(impayesMois)
+                            setAnneePaiement(impayesAnnee)
+                            setStep(3)
+                            setModalOpen(true)
+                          }}
+                        >
+                          Encaisser
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <Card className="p-8 text-center text-gray-400">
+                <Users size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Sélectionnez une classe et cliquez sur "Voir les impayés"</p>
+              </Card>
+            )}
           </div>
         )}
       </div>

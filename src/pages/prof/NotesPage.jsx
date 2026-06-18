@@ -161,10 +161,27 @@ export default function ProfNotes() {
   }
 
   function updateGrade(studentId, field, value) {
+    // Validation stricte : la note ne peut pas dépasser 20 ni être négative
+    if (value !== '') {
+      let num = Number(value)
+      if (isNaN(num)) return
+      if (num > 20) {
+        toast.error('La note ne peut pas dépasser 20')
+        num = 20
+      }
+      if (num < 0) num = 0
+      value = String(num)
+    }
     setGrades(prev => ({
       ...prev,
       [studentId]: { ...prev[studentId], student_id: studentId, [field]: value }
     }))
+  }
+
+  function clamp20(v) {
+    if (v === null || v === undefined || v === '') return null
+    const n = Math.max(0, Math.min(20, Number(v)))
+    return isNaN(n) ? null : n
   }
 
   // Sauvegarder uniquement la colonne active
@@ -181,10 +198,10 @@ export default function ProfNotes() {
           trimestre:   Number(selectedTrimestre),
           school_id:   schoolId,
           // On ne touche que la colonne active, les autres gardent leur valeur
-          devoir_1:    g.devoir_1    ?? null,
-          devoir_2:    g.devoir_2    ?? null,
-          devoir_3:    g.devoir_3    ?? null,
-          composition: g.composition ?? null,
+          devoir_1:    clamp20(g.devoir_1),
+          devoir_2:    clamp20(g.devoir_2),
+          devoir_3:    clamp20(g.devoir_3),
+          composition: clamp20(g.composition),
           // Statut par colonne
           [`${colonneActive}_statut`]: statut,
           // Statut global = brouillon tant qu'une colonne n'est pas soumise

@@ -96,6 +96,13 @@ export default function PaiementsPage() {
     return () => clearTimeout(timer)
   }, [eleveSearch, selectedClasse])
 
+  // Auto-fetch impayés dès que la classe, le mois ou l'année change
+  useEffect(() => {
+    if (activeVue === 'impayes' && impayesClasse) {
+      fetchElevesImpayes()
+    }
+  }, [impayesClasse, impayesMois, impayesAnnee, activeVue])
+
   // Montant auto selon type
   const montantAuto = selectedClasse
     ? (typePaiement === 'inscription'
@@ -453,7 +460,7 @@ export default function PaiementsPage() {
                 <select
                   value={impayesClasse}
                   onChange={e => setImpayesClasse(e.target.value)}
-                  className="flex-1 min-w-40 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
+                  className="flex-1 min-w-40 px-3 py-2 border-2 border-red-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white font-medium"
                 >
                   <option value="">Choisir une classe…</option>
                   {classes.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
@@ -474,14 +481,12 @@ export default function PaiementsPage() {
                     <option key={y} value={y}>{y}</option>
                   ))}
                 </select>
-                <Button
-                  onClick={fetchElevesImpayes}
-                  disabled={!impayesClasse}
-                  loading={loadingImpayes}
-                  className="bg-red-500 hover:bg-red-600 text-white border-0"
-                >
-                  <Search size={14} /> Voir les impayés
-                </Button>
+                {loadingImpayes && (
+                  <div className="flex items-center gap-2 text-red-500 text-sm font-medium px-1">
+                    <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                    Chargement…
+                  </div>
+                )}
               </div>
             </Card>
 
@@ -542,7 +547,7 @@ export default function PaiementsPage() {
             ) : (
               <Card className="p-8 text-center text-gray-400">
                 <Users size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Sélectionnez une classe et cliquez sur "Voir les impayés"</p>
+                <p className="text-sm">Sélectionnez une classe pour voir les impayés automatiquement</p>
               </Card>
             )}
           </div>

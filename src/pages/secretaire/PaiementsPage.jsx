@@ -193,6 +193,41 @@ export default function PaiementsPage() {
 
     setSaving(true)
     try {
+      // ── Vérification doublon ─────────────────────────────
+      let doublon = null
+      if (typePaiement === 'inscription') {
+        // Un seul frais d'inscription par élève et par année
+        const { data } = await supabase
+          .from('student_payments')
+          .select('id')
+          .eq('student_id', selectedEleve.id)
+          .eq('type_paiement', 'inscription')
+          .eq('annee', Number(anneePaiement))
+          .limit(1)
+        doublon = data?.length > 0
+          ? `${selectedEleve.prenom} ${selectedEleve.nom} a déjà des frais d'inscription enregistrés pour ${anneePaiement}`
+          : null
+      } else {
+        // Une seule mensualité par élève, par mois et par année
+        const { data } = await supabase
+          .from('student_payments')
+          .select('id')
+          .eq('student_id', selectedEleve.id)
+          .eq('type_paiement', 'scolarite')
+          .eq('mois', Number(moisPaiement))
+          .eq('annee', Number(anneePaiement))
+          .limit(1)
+        doublon = data?.length > 0
+          ? `${selectedEleve.prenom} ${selectedEleve.nom} a déjà un paiement enregistré pour ${moisLabel} ${anneePaiement}`
+          : null
+      }
+
+      if (doublon) {
+        toast.error(doublon)
+        setSaving(false)
+        return
+      }
+      // ────────────────────────────────────────────────────
       const { error } = await supabase.from('student_payments').insert({
         student_id:    selectedEleve.id,
         libelle,

@@ -69,6 +69,22 @@ export default function ElevesPage() {
     setSaving(true)
 
     try {
+      // Vérifier si l'élève existe déjà (même prénom + nom dans cette école)
+      const annee_scolaire = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`
+      const { data: existants } = await supabase
+        .from('students')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('annee_scolaire', annee_scolaire)
+        .ilike('prenom', form.prenom.trim())
+        .ilike('nom', form.nom.trim())
+
+      if (existants && existants.length > 0) {
+        toast.error(`${form.prenom} ${form.nom} est déjà inscrit(e) pour cette année scolaire`)
+        setSaving(false)
+        return
+      }
+
       const unique_code = `ECO-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`
       const { error } = await supabase.from('students').insert({
         prenom:          form.prenom.trim(),

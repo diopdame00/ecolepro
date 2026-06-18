@@ -633,17 +633,22 @@ function OngletMatieres({ classe, schoolId }) {
 // ONGLET 2 : Groupes d'options
 // ══════════════════════════════════════════════════════════════
 function OngletOptions({ classe, schoolId }) {
-  const [groupes, setGroupes]   = useState([])    // subject_option_groups
-  const [subjects, setSubjects] = useState([])    // matières de la classe
-  const [students, setStudents] = useState([])    // élèves de la classe
-  const [choices, setChoices]   = useState([])    // student_options
+  const { school } = useAuth()
+  const isLycee = (school?.type_etablissement || '') === 'lycee'
+
+  const [groupes, setGroupes]   = useState([])
+  const [subjects, setSubjects] = useState([])
+  const [students, setStudents] = useState([])
+  const [choices, setChoices]   = useState([])
   const [loading, setLoading]   = useState(true)
-  const [newGroupeNom, setNewGroupeNom] = useState('')
+  const [newGroupeNom, setNewGroupeNom]     = useState('')
   const [creatingGroupe, setCreatingGroupe] = useState(false)
   const [activeGroupe, setActiveGroupe]     = useState(null)
-  // Matières à ajouter au groupe
   const [addingSubject, setAddingSubject]   = useState(false)
   const [subjectToAdd, setSubjectToAdd]     = useState('')
+  // Lycée : coefficients par rang pour la matière en cours d'ajout
+  const [coefP1, setCoefP1] = useState(1)
+  const [coefP2, setCoefP2] = useState(1)
 
   useEffect(() => { fetchAll() }, [classe.id])
 
@@ -655,7 +660,8 @@ function OngletOptions({ classe, schoolId }) {
       { data: st },
       { data: cho },
     ] = await Promise.all([
-      supabase.from('subject_option_groups').select('*, group_subjects(*, subjects(nom))')
+      supabase.from('subject_option_groups')
+        .select('*, group_subjects(*, subjects(nom))')
         .eq('class_id', classe.id).order('nom'),
       supabase.from('class_subjects').select('*, subjects(nom)')
         .eq('class_id', classe.id).order('subjects(nom)'),
@@ -703,11 +709,16 @@ function OngletOptions({ classe, schoolId }) {
     if (!subjectToAdd || !activeGroupe) return
     setAddingSubject(true)
     try {
-      const { error } = await supabase.from('group_subjects').insert({
+      const payload = {
         group_id: activeGroupe, subject_id: subjectToAdd, school_id: schoolId,
-      })
+      }
+      if (isLycee) {
+        payload.coef_premier_choix  = Number(coefP1) || 1
+        payload.coef_deuxieme_choix = Number(coefP2) || 1
+      }
+      const { error } = await supabase.from('group_subjects').insert(payload)
       if (error) throw error
-      setSubjectToAdd('')
+      setSubjectToAdd(''); setCoefP1(1); setCoefP2(1)
       fetchAll()
     } catch (err) {
       toast.error(err.message)
@@ -716,18 +727,25 @@ function OngletOptions({ classe, schoolId }) {
     }
   }
 
+  async function updateCoefsGroupe(gsId, field, val) {
+    const v = Math.max(0.5, Math.min(10, Number(val)))
+    await supabase.from('group_subjects').update({ [field]: v }).eq('id', gsId)
+    fetchAll()
+  }
+
   async function retirerMatiereGroupe(gsId) {
     await supabase.from('group_subjects').delete().eq('id', gsId)
     fetchAll()
   }
 
-  // Choisir une matière pour un élève dans un groupe → un seul choix par groupe par élève
-  async function choisirOption(studentId, groupId, subjectId) {
-    // Supprimer l'ancien choix pour ce groupe
+  // Pour le lycée : rang_choix stocké dans student_options
+  // Pour le collège : simple présence/absence (rang_choix = 1 toujours)
+  async function choisirOption(studentId, groupId, subjectId, rangChoix = 1) {
     await supabase.from('student_options')
       .delete()
       .eq('student_id', studentId)
       .eq('group_id', groupId)
+      .eq('subject_id', subjectId)
 
     if (subjectId) {
       await supabase.from('student_options').insert({
@@ -736,18 +754,37 @@ function OngletOptions({ classe, schoolId }) {
         subject_id: subjectId,
         class_id:   classe.id,
         school_id:  schoolId,
+        rang_choix: rangChoix,
       })
     }
-    // Mise à jour locale immédiate (optimistic)
     setChoices(prev => {
-      const filtered = prev.filter(c => !(c.student_id === studentId && c.group_id === groupId))
-      if (subjectId) return [...filtered, { student_id: studentId, group_id: groupId, subject_id: subjectId }]
+      const filtered = prev.filter(c => !(
+        c.student_id === studentId && c.group_id === groupId && c.subject_id === subjectId
+      ))
+      if (subjectId) return [...filtered, { student_id: studentId, group_id: groupId, subject_id: subjectId, rang_choix: rangChoix }]
       return filtered
     })
   }
 
-  function getChoice(studentId, groupId) {
+  async function retirerChoix(studentId, groupId, subjectId) {
+    await supabase.from('student_options')
+      .delete()
+      .eq('student_id', studentId)
+      .eq('group_id', groupId)
+      .eq('subject_id', subjectId)
+    setChoices(prev => prev.filter(c => !(
+      c.student_id === studentId && c.group_id === groupId && c.subject_id === subjectId
+    )))
+  }
+
+  // Collège : un seul choix par groupe
+  function getChoiceCollege(studentId, groupId) {
     return choices.find(c => c.student_id === studentId && c.group_id === groupId)?.subject_id || null
+  }
+
+  // Lycée : liste de tous les choix d'un élève dans un groupe, avec rang
+  function getChoicesLycee(studentId, groupId) {
+    return choices.filter(c => c.student_id === studentId && c.group_id === groupId)
   }
 
   if (loading) return (
@@ -756,10 +793,9 @@ function OngletOptions({ classe, schoolId }) {
     </div>
   )
 
-  const groupeActif = groupes.find(g => g.id === activeGroupe)
+  const groupeActif    = groupes.find(g => g.id === activeGroupe)
   const matieresGroupe = groupeActif?.group_subjects || []
-  // Matières de la classe pas encore dans ce groupe
-  const matieresDispo = subjects.filter(s =>
+  const matieresDispo  = subjects.filter(s =>
     !matieresGroupe.find(gs => gs.subject_id === s.subject_id)
   )
 
@@ -819,37 +855,79 @@ function OngletOptions({ classe, schoolId }) {
 
           {groupeActif && (
             <div className="space-y-3">
-              {/* Matières dans ce groupe */}
+
+              {/* ── Matières du groupe ── */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                   Matières du groupe « {groupeActif.nom} »
                 </label>
-                <div className="flex flex-wrap gap-2 mb-2">
+
+                {/* Liste des matières avec coefs lycée */}
+                <div className="space-y-2 mb-3">
                   {matieresGroupe.length === 0 ? (
                     <span className="text-xs text-gray-400">Aucune matière dans ce groupe</span>
                   ) : matieresGroupe.map(gs => (
-                    <span key={gs.id}
-                      className="inline-flex items-center gap-1.5 bg-primary-100 text-primary-700 text-xs font-semibold px-3 py-1.5 rounded-full">
-                      {gs.subjects?.nom}
+                    <div key={gs.id}
+                      className="flex items-center gap-2 bg-primary-50 border border-primary-100 rounded-xl px-3 py-2">
+                      <span className="flex-1 text-sm font-semibold text-primary-700">{gs.subjects?.nom}</span>
+                      {isLycee ? (
+                        <div className="flex items-center gap-3 text-xs">
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-400 whitespace-nowrap">1er choix</span>
+                            <input type="number" min="0.5" max="10" step="0.5"
+                              value={gs.coef_premier_choix ?? 1}
+                              onChange={e => updateCoefsGroupe(gs.id, 'coef_premier_choix', e.target.value)}
+                              className="w-14 px-1.5 py-1 border border-gray-200 rounded-lg text-center font-bold focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-400 whitespace-nowrap">2ème choix</span>
+                            <input type="number" min="0.5" max="10" step="0.5"
+                              value={gs.coef_deuxieme_choix ?? 1}
+                              onChange={e => updateCoefsGroupe(gs.id, 'coef_deuxieme_choix', e.target.value)}
+                              className="w-14 px-1.5 py-1 border border-gray-200 rounded-lg text-center font-bold focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-primary-400 font-medium">Option</span>
+                      )}
                       <button onClick={() => retirerMatiereGroupe(gs.id)}
-                        className="hover:text-red-500 transition-colors">
-                        <X size={10} />
+                        className="hover:text-red-500 text-gray-300 transition-colors ml-1">
+                        <X size={14} />
                       </button>
-                    </span>
+                    </div>
                   ))}
                 </div>
-                {/* Ajouter une matière au groupe */}
-                <div className="flex gap-2">
+
+                {/* Ajouter matière */}
+                <div className="space-y-2">
                   <select value={subjectToAdd} onChange={e => setSubjectToAdd(e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                     <option value="">+ Ajouter une matière au groupe</option>
                     {matieresDispo.map(s => (
                       <option key={s.subject_id} value={s.subject_id}>{s.subjects?.nom}</option>
                     ))}
                   </select>
+                  {/* Lycée : saisir les coefs au moment de l'ajout */}
+                  {isLycee && subjectToAdd && (
+                    <div className="flex items-center gap-3 text-xs bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                      <span className="text-blue-600 font-semibold flex-1">Coefficients pour le lycée</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-500">1er choix</span>
+                        <input type="number" min="0.5" max="10" step="0.5" value={coefP1}
+                          onChange={e => setCoefP1(e.target.value)}
+                          className="w-14 px-1.5 py-1 border border-gray-200 rounded-lg text-center font-bold focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-500">2ème choix</span>
+                        <input type="number" min="0.5" max="10" step="0.5" value={coefP2}
+                          onChange={e => setCoefP2(e.target.value)}
+                          className="w-14 px-1.5 py-1 border border-gray-200 rounded-lg text-center font-bold focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                      </div>
+                    </div>
+                  )}
                   <Button size="sm" onClick={ajouterMatiereGroupe}
-                    loading={addingSubject} disabled={!subjectToAdd}>
-                    <Plus size={13} />
+                    loading={addingSubject} disabled={!subjectToAdd} className="w-full">
+                    <Plus size={13} /> Ajouter au groupe
                   </Button>
                 </div>
               </div>
@@ -859,8 +937,14 @@ function OngletOptions({ classe, schoolId }) {
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                     Répartition des élèves
+                    {isLycee && (
+                      <span className="ml-2 text-blue-500 normal-case font-normal">
+                        — Cliquez pour sélectionner : 1er clic = 1er choix · 2ème clic = 2ème choix · 3ème = retirer
+                      </span>
+                    )}
                   </label>
-                  <div className="border border-gray-100 rounded-xl overflow-hidden">
+
+                  <div className="border border-gray-100 rounded-xl overflow-hidden overflow-x-auto">
                     {/* En-têtes */}
                     <div className="grid bg-gray-50 border-b border-gray-100"
                       style={{ gridTemplateColumns: `1fr repeat(${matieresGroupe.length}, auto)` }}>
@@ -869,12 +953,25 @@ function OngletOptions({ classe, schoolId }) {
                         <div key={gs.id}
                           className="px-3 py-2 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">
                           {gs.subjects?.nom}
+                          {isLycee && (
+                            <div className="flex gap-1 justify-center mt-0.5">
+                              <span className="bg-blue-100 text-blue-600 rounded px-1 py-0.5 text-[10px]">
+                                C{gs.coef_premier_choix ?? 1}
+                              </span>
+                              <span className="bg-purple-100 text-purple-600 rounded px-1 py-0.5 text-[10px]">
+                                C{gs.coef_deuxieme_choix ?? 1}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
+
                     {/* Lignes élèves */}
                     {students.map((st, i) => {
-                      const choix = getChoice(st.id, groupeActif.id)
+                      const choixCollege = !isLycee ? getChoiceCollege(st.id, groupeActif.id) : null
+                      const choixLycee   = isLycee  ? getChoicesLycee(st.id, groupeActif.id)  : []
+
                       return (
                         <div key={st.id}
                           className={`grid items-center ${i > 0 ? 'border-t border-gray-50' : ''}`}
@@ -882,31 +979,91 @@ function OngletOptions({ classe, schoolId }) {
                           <div className="px-3 py-2.5 text-sm text-gray-800 font-medium truncate">
                             {st.prenom} {st.nom}
                           </div>
+
                           {matieresGroupe.map(gs => {
-                            const selected = choix === gs.subject_id
-                            return (
-                              <div key={gs.id} className="flex justify-center px-3 py-2.5">
-                                <button
-                                  onClick={() => choisirOption(st.id, groupeActif.id, selected ? null : gs.subject_id)}
-                                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all
-                                    ${selected
-                                      ? 'bg-primary-500 border-primary-500 text-white'
-                                      : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50'}`}>
-                                  {selected && <Check size={13} />}
-                                </button>
-                              </div>
-                            )
+                            if (!isLycee) {
+                              /* ── COLLÈGE : coche simple ── */
+                              const selected = choixCollege === gs.subject_id
+                              return (
+                                <div key={gs.id} className="flex justify-center px-3 py-2.5">
+                                  <button
+                                    onClick={() => {
+                                      if (selected) {
+                                        retirerChoix(st.id, groupeActif.id, gs.subject_id)
+                                      } else {
+                                        // Retirer l'ancien choix du groupe puis choisir celui-ci
+                                        const ancien = choices.find(c =>
+                                          c.student_id === st.id && c.group_id === groupeActif.id
+                                        )
+                                        if (ancien) retirerChoix(st.id, groupeActif.id, ancien.subject_id)
+                                        choisirOption(st.id, groupeActif.id, gs.subject_id, 1)
+                                      }
+                                    }}
+                                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all
+                                      ${selected
+                                        ? 'bg-primary-500 border-primary-500 text-white'
+                                        : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50'}`}>
+                                    {selected && <Check size={13} />}
+                                  </button>
+                                </div>
+                              )
+                            } else {
+                              /* ── LYCÉE : badge rang (1 / 2 / vide) ── */
+                              const existant = choixLycee.find(c => c.subject_id === gs.subject_id)
+                              const rang = existant?.rang_choix || null
+
+                              // Cycle : vide → 1er choix → 2ème choix → retirer
+                              function cyclerRang() {
+                                if (!rang) {
+                                  choisirOption(st.id, groupeActif.id, gs.subject_id, 1)
+                                } else if (rang === 1) {
+                                  // Passer à 2ème choix : supprimer et réinsérer
+                                  retirerChoix(st.id, groupeActif.id, gs.subject_id)
+                                  setTimeout(() => choisirOption(st.id, groupeActif.id, gs.subject_id, 2), 50)
+                                } else {
+                                  retirerChoix(st.id, groupeActif.id, gs.subject_id)
+                                }
+                              }
+
+                              return (
+                                <div key={gs.id} className="flex justify-center px-3 py-2.5">
+                                  <button
+                                    onClick={cyclerRang}
+                                    className={`w-9 h-7 rounded-lg border-2 flex items-center justify-center text-xs font-black transition-all
+                                      ${rang === 1
+                                        ? 'bg-blue-500 border-blue-500 text-white'
+                                        : rang === 2
+                                          ? 'bg-purple-500 border-purple-500 text-white'
+                                          : 'border-gray-200 text-gray-300 hover:border-primary-300 hover:bg-primary-50'}`}>
+                                    {rang === 1 ? 'C1' : rang === 2 ? 'C2' : '—'}
+                                  </button>
+                                </div>
+                              )
+                            }
                           })}
                         </div>
                       )
                     })}
+
                     {/* Résumé */}
                     <div className="px-3 py-2 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
-                      <span>{students.filter(st => getChoice(st.id, groupeActif.id)).length}/{students.length} élèves assignés</span>
-                      {students.filter(st => !getChoice(st.id, groupeActif.id)).length > 0 && (
-                        <span className="text-amber-500 font-semibold">
-                          {students.filter(st => !getChoice(st.id, groupeActif.id)).length} sans choix
+                      {isLycee ? (
+                        <span>
+                          {choixLyceeCount(students, choices, groupeActif.id)} choix enregistrés
+                          {' · '}
+                          <span className="text-blue-500 font-semibold">C1 = 1er choix</span>
+                          {' · '}
+                          <span className="text-purple-500 font-semibold">C2 = 2ème choix</span>
                         </span>
+                      ) : (
+                        <>
+                          <span>{students.filter(st => getChoiceCollege(st.id, groupeActif.id)).length}/{students.length} élèves assignés</span>
+                          {students.filter(st => !getChoiceCollege(st.id, groupeActif.id)).length > 0 && (
+                            <span className="text-amber-500 font-semibold">
+                              {students.filter(st => !getChoiceCollege(st.id, groupeActif.id)).length} sans choix
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -930,4 +1087,8 @@ function OngletOptions({ classe, schoolId }) {
       )}
     </div>
   )
+}
+
+function choixLyceeCount(students, choices, groupId) {
+  return choices.filter(c => c.group_id === groupId).length
 }

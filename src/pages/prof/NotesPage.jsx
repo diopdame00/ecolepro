@@ -4,10 +4,17 @@ import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Select, Badge, EmptyState } from '../../components/ui'
 import { formatNote } from '../../utils/calculs'
-import { FileText, Send, Save } from 'lucide-react'
+import { FileText, Send, Save, ChevronDown, ChevronUp, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// Calcul moyenne matière basé sur les vrais champs : devoir_1, devoir_2, devoir_3, composition
+// Colonnes disponibles
+const COLONNES = [
+  { field: 'devoir_1',    label: 'Devoir 1' },
+  { field: 'devoir_2',    label: 'Devoir 2' },
+  { field: 'devoir_3',    label: 'Devoir 3' },
+  { field: 'composition', label: 'Composition' },
+]
+
 function calculerMoyenne(g) {
   const devoirs = [g.devoir_1, g.devoir_2, g.devoir_3]
     .filter(v => v !== null && v !== undefined && v !== '')
@@ -23,19 +30,26 @@ function calculerMoyenne(g) {
 
 export default function ProfNotes() {
   const { profile, schoolId } = useAuth()
-  const [classes, setClasses]           = useState([])
-  const [matieres, setMatieres]         = useState([])
-  const [eleves, setEleves]             = useState([])
-  const [grades, setGrades]             = useState({})
+  const [classes, setClasses]     = useState([])
+  const [matieres, setMatieres]   = useState([])
+  const [eleves, setEleves]       = useState([])
+  const [grades, setGrades]       = useState({})
   const [selectedClasse, setSelectedClasse]       = useState('')
   const [selectedMatiere, setSelectedMatiere]     = useState('')
   const [selectedTrimestre, setSelectedTrimestre] = useState('1')
-  const [loading, setLoading]   = useState(false)
-  const [saving, setSaving]     = useState(false)
+  const [loading, setLoading]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+
+  // Colonne active (celle que le prof est en train de saisir)
+  const [colonneActive, setColonneActive] = useState('devoir_1')
+  // Colonnes déjà soumises (verrouillées)
+  const [colonnesSoumises, setColonnesSoumises] = useState([]) // ex: ['devoir_1']
 
   useEffect(() => { fetchClasses() }, [])
   useEffect(() => { if (selectedClasse) { fetchMatieres(); fetchEleves() } }, [selectedClasse])
-  useEffect(() => { if (selectedClasse && selectedMatiere) fetchGrades() }, [selectedClasse, selectedMatiere, selectedTrimestre])
+  useEffect(() => {
+    if (selectedClasse && selectedMatiere) { fetchEleves(); fetchGrades() }
+  }, [selectedMatiere, selectedTrimestre])
 
   async function fetchClasses() {
     const { data } = await supabase
@@ -51,37 +65,62 @@ export default function ProfNotes() {
       .select('subject_id, subjects(id, nom)')
       .eq('prof_id', profile.id)
       .eq('class_id', selectedClasse)
-
     if (!data?.length) { setMatieres([]); return }
-
     const subjectIds = data.map(d => d.subject_id).filter(Boolean)
     const { data: cs } = await supabase
       .from('class_subjects')
       .select('subject_id, coefficient')
       .eq('class_id', selectedClasse)
       .in('subject_id', subjectIds)
-
     const coefMap = {}
     cs?.forEach(c => { coefMap[c.subject_id] = c.coefficient })
-
     setMatieres(
-      data
-        .map(d => ({
-          id:          d.subjects?.id,
-          nom:         d.subjects?.nom,
-          coefficient: coefMap[d.subject_id] ?? 1,
-        }))
-        .filter(m => m.id)
+      data.map(d => ({
+        id:          d.subjects?.id,
+        nom:         d.subjects?.nom,
+        coefficient: coefMap[d.subject_id] ?? 1,
+      })).filter(m => m.id)
     )
   }
 
   async function fetchEleves() {
-    const { data } = await supabase
+    const { data: tousEleves } = await supabase
       .from('students')
       .select('id, prenom, nom')
       .eq('classe_id', selectedClasse)
       .order('nom')
-    setEleves(data || [])
+    if (!tousEleves) { setEleves([]); return }
+
+    if (selectedMatiere) {
+      const { data: groupeSubject } = await supabase
+        .from('group_subjects')
+        .select('group_id')
+        .eq('subject_id', selectedMatiere)
+        .in('group_id',
+          (await supabase
+            .from('subject_option_groups')
+            .select('id')
+            .eq('class_id', selectedClasse)
+          ).data?.map(g => g.id) || []
+        )
+        .limit(1)
+
+      if (groupeSubject && groupeSubject.length > 0) {
+        const groupId = groupeSubject[0].group_id
+        const { data: optChoices } = await supabase
+          .from('student_options')
+          .select('student_id')
+          .eq('group_id', groupId)
+          .eq('subject_id', selectedMatiere)
+          .eq('class_id', selectedClasse)
+        const idChoisis = new Set((optChoices || []).map(o => o.student_id))
+        setEleves(tousEleves.filter(e => idChoisis.has(e.id)))
+      } else {
+        setEleves(tousEleves)
+      }
+    } else {
+      setEleves(tousEleves)
+    }
   }
 
   async function fetchGrades() {
@@ -96,6 +135,28 @@ export default function ProfNotes() {
     const map = {}
     data?.forEach(g => { map[g.student_id] = g })
     setGrades(map)
+
+    // Détecter les colonnes déjà soumises ou validées
+    // Une colonne est soumise si tous les élèves qui ont une note dans cette colonne
+    // ont un statut 'soumis' ou 'valide' pour cette colonne spécifiquement
+    const soumises = []
+    COLONNES.forEach(col => {
+      const elevesAvecNote = (data || []).filter(g =>
+        g[col.field] !== null && g[col.field] !== undefined
+      )
+      if (elevesAvecNote.length > 0) {
+        const tousVerrouilles = elevesAvecNote.every(g =>
+          g[`${col.field}_statut`] === 'soumis' || g[`${col.field}_statut`] === 'valide'
+        )
+        if (tousVerrouilles) soumises.push(col.field)
+      }
+    })
+    setColonnesSoumises(soumises)
+
+    // Choisir automatiquement la prochaine colonne non soumise
+    const prochaineColonne = COLONNES.find(c => !soumises.includes(c.field))
+    if (prochaineColonne) setColonneActive(prochaineColonne.field)
+
     setLoading(false)
   }
 
@@ -106,7 +167,9 @@ export default function ProfNotes() {
     }))
   }
 
-  async function sauvegarder(statut = 'brouillon') {
+  // Sauvegarder uniquement la colonne active
+  async function sauvegarderColonne(statut = 'brouillon') {
+    if (!colonneActive) return
     setSaving(true)
     try {
       const upserts = eleves.map(eleve => {
@@ -117,20 +180,38 @@ export default function ProfNotes() {
           prof_id:     profile.id,
           trimestre:   Number(selectedTrimestre),
           school_id:   schoolId,
-          devoir_1:    g.devoir_1    || null,
-          devoir_2:    g.devoir_2    || null,
-          devoir_3:    g.devoir_3    || null,
-          composition: g.composition || null,
-          statut,
+          // On ne touche que la colonne active, les autres gardent leur valeur
+          devoir_1:    g.devoir_1    ?? null,
+          devoir_2:    g.devoir_2    ?? null,
+          devoir_3:    g.devoir_3    ?? null,
+          composition: g.composition ?? null,
+          // Statut par colonne
+          [`${colonneActive}_statut`]: statut,
+          // Statut global = brouillon tant qu'une colonne n'est pas soumise
+          statut: statut === 'soumis'
+            ? [...colonnesSoumises, colonneActive].length === COLONNES.length
+              ? 'soumis'
+              : 'brouillon'
+            : g.statut || 'brouillon',
         }
       })
 
       const { error } = await supabase.from('grades').upsert(upserts, {
         onConflict: 'student_id,matiere_id,trimestre'
       })
-
       if (error) throw error
-      toast.success(statut === 'soumis' ? 'Notes soumises pour validation !' : 'Brouillon sauvegardé')
+
+      if (statut === 'soumis') {
+        toast.success(`${COLONNES.find(c => c.field === colonneActive)?.label} soumis pour validation !`)
+        setColonnesSoumises(prev => [...new Set([...prev, colonneActive])])
+        // Passer automatiquement à la prochaine colonne disponible
+        const prochaine = COLONNES.find(c =>
+          c.field !== colonneActive && !colonnesSoumises.includes(c.field)
+        )
+        if (prochaine) setColonneActive(prochaine.field)
+      } else {
+        toast.success('Brouillon sauvegardé')
+      }
       fetchGrades()
     } catch (err) {
       toast.error('Erreur : ' + err.message)
@@ -139,8 +220,9 @@ export default function ProfNotes() {
     }
   }
 
-  const classeSelectionnee   = classes.find(c => c.id === selectedClasse)
-  const matiereSelectionnee  = matieres.find(m => m.id === selectedMatiere)
+  const classeSelectionnee  = classes.find(c => c.id === selectedClasse)
+  const matiereSelectionnee = matieres.find(m => m.id === selectedMatiere)
+  const colonneActiveInfo   = COLONNES.find(c => c.field === colonneActive)
 
   return (
     <DashboardLayout>
@@ -153,7 +235,7 @@ export default function ProfNotes() {
         <Card>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Select label="Classe" value={selectedClasse}
-              onChange={e => setSelectedClasse(e.target.value)}>
+              onChange={e => { setSelectedClasse(e.target.value); setSelectedMatiere('') }}>
               <option value="">Choisir une classe</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
             </Select>
@@ -173,27 +255,68 @@ export default function ProfNotes() {
 
         {selectedClasse && selectedMatiere && (
           <Card className="p-0 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="font-bold text-gray-900">
-                  {classeSelectionnee?.nom} — {matiereSelectionnee?.nom}
-                </h2>
-                <p className="text-sm text-gray-400">
-                  Trimestre {selectedTrimestre} · {eleves.length} élève(s)
-                </p>
+
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h2 className="font-bold text-gray-900">
+                    {classeSelectionnee?.nom} — {matiereSelectionnee?.nom}
+                  </h2>
+                  <p className="text-sm text-gray-400">
+                    Trimestre {selectedTrimestre} · {eleves.length} élève(s)
+                  </p>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm" loading={saving}
-                  onClick={() => sauvegarder('brouillon')}>
-                  <Save size={14} /> Sauvegarder
-                </Button>
-                <Button size="sm" loading={saving}
-                  onClick={() => sauvegarder('soumis')}>
-                  <Send size={14} /> Soumettre
-                </Button>
+
+              {/* Sélecteur de colonne */}
+              <div className="flex gap-2 flex-wrap mt-4">
+                {COLONNES.map(col => {
+                  const soumise   = colonnesSoumises.includes(col.field)
+                  const isActive  = colonneActive === col.field
+                  return (
+                    <button
+                      key={col.field}
+                      onClick={() => !soumise && setColonneActive(col.field)}
+                      disabled={soumise}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition-all
+                        ${soumise
+                          ? 'border-green-200 bg-green-50 text-green-600 cursor-not-allowed'
+                          : isActive
+                            ? 'border-primary-500 bg-primary-500 text-white shadow'
+                            : 'border-gray-200 text-gray-500 hover:border-primary-300 hover:text-primary-600'}`}
+                    >
+                      {soumise
+                        ? <><Lock size={11} /> {col.label} ✓</>
+                        : col.label
+                      }
+                    </button>
+                  )
+                })}
               </div>
+
+              {/* Boutons d'action pour la colonne active */}
+              {colonneActiveInfo && !colonnesSoumises.includes(colonneActive) && (
+                <div className="flex gap-2 mt-3">
+                  <Button variant="secondary" size="sm" loading={saving}
+                    onClick={() => sauvegarderColonne('brouillon')}>
+                    <Save size={14} /> Sauvegarder {colonneActiveInfo.label}
+                  </Button>
+                  <Button size="sm" loading={saving}
+                    onClick={() => sauvegarderColonne('soumis')}>
+                    <Send size={14} /> Soumettre {colonneActiveInfo.label}
+                  </Button>
+                </div>
+              )}
+
+              {colonnesSoumises.length === COLONNES.length && (
+                <div className="mt-3 bg-green-50 border border-green-200 rounded-xl px-4 py-2 text-sm text-green-700 font-semibold flex items-center gap-2">
+                  <Lock size={14} /> Toutes les notes ont été soumises pour validation
+                </div>
+              )}
             </div>
 
+            {/* Tableau */}
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
@@ -206,10 +329,20 @@ export default function ProfNotes() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
                       <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Élève</th>
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-500 uppercase">Devoir 1</th>
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-500 uppercase">Devoir 2</th>
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-500 uppercase">Devoir 3</th>
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-500 uppercase">Compo</th>
+                      {COLONNES.map(col => {
+                        const soumise  = colonnesSoumises.includes(col.field)
+                        const isActive = colonneActive === col.field
+                        return (
+                          <th key={col.field}
+                            className={`px-3 py-3 text-center text-xs font-bold uppercase
+                              ${soumise  ? 'text-green-500' :
+                                isActive ? 'text-primary-600' : 'text-gray-400'}`}>
+                            {col.label}
+                            {soumise && <span className="ml-1">🔒</span>}
+                            {isActive && !soumise && <span className="ml-1">✏️</span>}
+                          </th>
+                        )
+                      })}
                       <th className="px-3 py-3 text-center text-xs font-bold text-gray-500 uppercase">Moyenne</th>
                       <th className="px-3 py-3 text-center text-xs font-bold text-gray-500 uppercase">Statut</th>
                     </tr>
@@ -220,27 +353,35 @@ export default function ProfNotes() {
                       const moy = calculerMoyenne(g)
                       const statusColor = g.statut === 'valide' ? 'green'
                                         : g.statut === 'soumis' ? 'yellow' : 'gray'
-
                       return (
                         <tr key={eleve.id} className="hover:bg-gray-50/50">
                           <td className="px-4 py-2.5 font-medium text-gray-900">
                             {eleve.prenom} {eleve.nom}
                           </td>
-                          {['devoir_1', 'devoir_2', 'devoir_3', 'composition'].map(field => (
-                            <td key={field} className="px-3 py-2">
-                              <input
-                                type="number"
-                                min="0" max="20" step="0.25"
-                                disabled={g.statut === 'valide'}
-                                value={g[field] ?? ''}
-                                onChange={e => updateGrade(eleve.id, field, e.target.value)}
-                                className="w-16 text-center px-2 py-1 border border-gray-200 rounded-lg text-sm
-                                           focus:outline-none focus:ring-2 focus:ring-primary-500
-                                           disabled:bg-gray-50 disabled:text-gray-400 mx-auto block"
-                                placeholder="—"
-                              />
-                            </td>
-                          ))}
+                          {COLONNES.map(col => {
+                            const soumise  = colonnesSoumises.includes(col.field)
+                            const isActive = colonneActive === col.field
+                            const verrouille = soumise || g.statut === 'valide'
+                            return (
+                              <td key={col.field} className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  min="0" max="20" step="0.25"
+                                  disabled={verrouille || !isActive}
+                                  value={g[col.field] ?? ''}
+                                  onChange={e => updateGrade(eleve.id, col.field, e.target.value)}
+                                  className={`w-16 text-center px-2 py-1 border rounded-lg text-sm mx-auto block
+                                    focus:outline-none focus:ring-2 focus:ring-primary-500
+                                    ${verrouille
+                                      ? 'bg-green-50 border-green-200 text-green-600 cursor-not-allowed'
+                                      : isActive
+                                        ? 'border-primary-300 bg-primary-50/50 focus:ring-primary-500'
+                                        : 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'}`}
+                                  placeholder="—"
+                                />
+                              </td>
+                            )
+                          })}
                           <td className="px-3 py-2 text-center">
                             <span className={`font-bold ${
                               moy !== null ? (moy >= 10 ? 'text-green-600' : 'text-red-500') : 'text-gray-400'

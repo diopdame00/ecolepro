@@ -188,15 +188,32 @@ export default function ParentNotes() {
               ))}
             </div>
 
-            {/* Bouton bulletin */}
-            <button onClick={telechargerBulletin} disabled={downloading}
-              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-2xl
-                         flex items-center justify-center gap-2 transition-colors disabled:opacity-50">
-              {downloading
-                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <Download size={16} />}
-              Télécharger le bulletin T{selectedTrimestre}
-            </button>
+            {/* Accès bulletin — uniquement si toutes les matières ont au moins une note */}
+            {(() => {
+              const toutesNotees = notes.every(n =>
+                n.devoir_1 != null || n.devoir_2 != null || n.devoir_3 != null
+              )
+              return toutesNotees ? (
+                <button onClick={telechargerBulletin} disabled={downloading}
+                  className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-2xl
+                             flex items-center justify-center gap-2 transition-colors disabled:opacity-50">
+                  {downloading
+                    ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <Download size={16} />}
+                  Télécharger le bulletin T{selectedTrimestre}
+                </button>
+              ) : (
+                <div className="w-full bg-gray-100 border border-dashed border-gray-300 rounded-2xl py-4 px-4
+                               flex items-center justify-center gap-3 text-center">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-500">Bulletin non disponible</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Toutes les notes doivent être saisies pour accéder au bulletin
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
           </>
         )}
       </div>

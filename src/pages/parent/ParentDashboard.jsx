@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
   GraduationCap, BookOpen, Wallet, User, LogOut,
-  CalendarDays, TrendingUp, AlertCircle, ChevronRight,
+  CalendarDays, AlertCircle, ChevronRight,
   Bell, XCircle
 } from 'lucide-react'
 
@@ -17,7 +17,6 @@ function getToken() {
 export default function ParentDashboard() {
   const { studentId }              = useParams()
   const { parentSession, signOut } = useAuth()
-  const [notes, setNotes]          = useState([])
   const [paiements, setPaiements]  = useState([])
   const [coursAnnules, setCoursAnnules] = useState([])
   const [loading, setLoading]      = useState(true)
@@ -26,24 +25,11 @@ export default function ParentDashboard() {
 
   useEffect(() => {
     if (studentId && student) {
-      fetchNotes()
       fetchPaiements()
       fetchCoursAnnules()
+      setLoading(false)
     }
   }, [studentId, student])
-
-  // ── Notes via RPC sécurisée ─────────────────────────────────
-  async function fetchNotes() {
-    const token = getToken()
-    if (!token) { setLoading(false); return }
-
-    const { data } = await supabase.rpc('get_student_grades_by_token', {
-      p_token:     token,
-      p_trimestre: 1,   // trimestre en cours par défaut
-    })
-    setNotes(data || [])
-    setLoading(false)
-  }
 
   // ── Paiements via RPC sécurisée ─────────────────────────────
   async function fetchPaiements() {
@@ -66,11 +52,6 @@ export default function ParentDashboard() {
     })
     setCoursAnnules(data || [])
   }
-
-  // ── Calculs ──────────────────────────────────────────────────
-  const moyenneGenerale = notes.length > 0
-    ? (notes.reduce((acc, n) => acc + Number(n.moyenne_matiere || 0), 0) / notes.length).toFixed(2)
-    : null
 
   const impayes = paiements.filter(p => p.statut === 'en_attente' || p.statut === 'partiel')
 
@@ -138,12 +119,18 @@ export default function ParentDashboard() {
 
         {/* ── Cartes stats ── */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-center">
-            <div className="text-3xl font-black text-primary-700">
-              {moyenneGenerale ?? '—'}
+          <Link to={`/parent/${studentId}/notes`}
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-center
+                       hover:shadow-md hover:border-primary-200 transition-all group">
+            <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center mx-auto mb-2
+                            group-hover:bg-primary-200 transition-colors">
+              <BookOpen size={20} className="text-primary-600" />
             </div>
-            <div className="text-xs text-gray-500 mt-1">Moyenne générale</div>
-          </div>
+            <div className="text-sm font-bold text-gray-700 group-hover:text-primary-700 transition-colors">
+              Bulletin
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">Voir mes notes</div>
+          </Link>
           <div className={`rounded-2xl shadow-sm border p-4 text-center
             ${impayes.length > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-100'}`}>
             <div className={`text-3xl font-black ${impayes.length > 0 ? 'text-orange-700' : 'text-green-600'}`}>
@@ -183,41 +170,6 @@ export default function ParentDashboard() {
             </Link>
           ))}
         </div>
-
-        {/* ── Dernières notes ── */}
-        {notes.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-gray-50">
-              <h2 className="font-bold text-gray-900 flex items-center gap-2">
-                <TrendingUp size={16} className="text-primary-600" />
-                Dernières notes
-              </h2>
-              <Link to={`/parent/${studentId}/notes`}
-                className="text-xs text-primary-600 font-semibold flex items-center gap-1 hover:gap-2 transition-all">
-                Tout voir <ChevronRight size={13} />
-              </Link>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {notes.slice(0, 4).map((n, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900">{n.matiere_nom}</div>
-                    <div className="text-xs text-gray-400">Trimestre {n.trimestre}</div>
-                  </div>
-                  <div className={`text-lg font-black ${
-                    Number(n.moyenne_matiere) >= 14 ? 'text-green-600'
-                    : Number(n.moyenne_matiere) >= 10 ? 'text-blue-600'
-                    : Number(n.moyenne_matiere) >= 8  ? 'text-orange-500'
-                    : 'text-red-600'
-                  }`}>
-                    {Number(n.moyenne_matiere).toFixed(2)}
-                    <span className="text-xs text-gray-400 font-normal">/20</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* ── Alerte paiements ── */}
         {impayes.length > 0 && (

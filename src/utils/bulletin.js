@@ -152,9 +152,10 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
 
   matieres.forEach((matiere, idx) => {
     // Trouver la note correspondante (enrichie avec rang_matiere)
-    // Chercher par matiere_id en priorité (id dans matieres = matiere_id)
-    const note = notes.find(n => n.matiere_id === matiere.id) ||
-                 notes.find(n => n.subjects?.id === matiere.id) || {}
+    const note = notes.find(n =>
+      n.matiere_id === matiere.id ||
+      n.subjects?.id === matiere.id
+    ) || {}
 
     const coef = Number(matiere.coefficient ?? note.subjects?.coefficient ?? 1)
     const bg   = idx % 2 === 0 ? blanc : grisLight
@@ -180,8 +181,9 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
       totalMoyPond += moyX
     }
 
-    // ── RANG MATIÈRE : depuis rang_matiere injecté par BulletinsPage ──
-    const rangMatiere = note.rang_matiere ?? null
+    // ── RANG MATIÈRE : chercher directement par matiere_id dans notes
+    const noteDirecte = notes.find(n => n.matiere_id === matiere.id)
+    const rangMatiere = noteDirecte?.rang_matiere ?? note.rang_matiere ?? null
 
     const row = [
       matiere.nom,
@@ -302,14 +304,14 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
     doc.rect(margin, y + i * 7, boxW, 7, 'S')
     doc.text(label, margin + 2, y + i * 7 + 4.5)
     doc.rect(margin + boxW - 8, y + i * 7 + 1.5, 5, 4, 'S')
-    // Cocher la case si c'est la bonne ligne (coche dessinée car unicode non supporté)
     if (i === cocheGauche) {
-      const cx = margin + boxW - 5.5
-      const cy = y + i * 7 + 3.5
+      // Coche dessinée alignée avec la case rect(margin+boxW-8, y+i*7+1.5, 5, 4)
+      const bx = margin + boxW - 8
+      const by = y + i * 7 + 1.5
       doc.setDrawColor(0, 0, 0)
-      doc.setLineWidth(0.7)
-      doc.line(cx - 1.5, cy + 1, cx, cy + 2.5)
-      doc.line(cx, cy + 2.5, cx + 2.5, cy - 0.5)
+      doc.setLineWidth(0.9)
+      doc.line(bx + 0.8, by + 2.2, bx + 1.8, by + 3.2)
+      doc.line(bx + 1.8, by + 3.2, bx + 4.2, by + 0.6)
       doc.setLineWidth(0.2)
     }
   })
@@ -317,14 +319,13 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
     doc.rect(margin + boxW + 6, y + i * 7, boxW, 7, 'S')
     doc.text(label, margin + boxW + 8, y + i * 7 + 4.5)
     doc.rect(margin + boxW + 6 + boxW - 8, y + i * 7 + 1.5, 5, 4, 'S')
-    // Cocher la case si c'est la bonne ligne (coche dessinée)
     if (i === cocheDroite) {
-      const cx = margin + boxW + 6 + boxW - 5.5
-      const cy = y + i * 7 + 3.5
+      const bx = margin + boxW + 6 + boxW - 8
+      const by = y + i * 7 + 1.5
       doc.setDrawColor(0, 0, 0)
-      doc.setLineWidth(0.7)
-      doc.line(cx - 1.5, cy + 1, cx, cy + 2.5)
-      doc.line(cx, cy + 2.5, cx + 2.5, cy - 0.5)
+      doc.setLineWidth(0.9)
+      doc.line(bx + 0.8, by + 2.2, bx + 1.8, by + 3.2)
+      doc.line(bx + 1.8, by + 3.2, bx + 4.2, by + 0.6)
       doc.setLineWidth(0.2)
     }
   })

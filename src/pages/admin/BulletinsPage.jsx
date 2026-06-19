@@ -53,6 +53,7 @@ export default function BulletinsPage() {
         *,
         grades!inner(
           id,
+          student_id,
           matiere_id,
           devoir_1,
           devoir_2,
@@ -104,7 +105,11 @@ export default function BulletinsPage() {
         const mid = note.matiere_id
         // Collecter toutes les moy20 de cette matière dans la classe
         const tousLesMoys = eleves
-          .flatMap(e => (e.grades || []).filter(g => g.matiere_id === mid))
+          .flatMap(e => (e.grades || [])
+            .filter(g => g.matiere_id === mid)
+            // Utiliser e.id comme student_id (grades imbriqués peut ne pas l'avoir)
+            .map(g => ({ ...g, student_id: g.student_id || e.id }))
+          )
           .map(g => {
             const devs = [g.devoir_1, g.devoir_2, g.devoir_3]
               .filter(v => v !== null && v !== undefined && v !== '').map(Number)

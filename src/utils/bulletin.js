@@ -92,7 +92,11 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
 
   y += 6
   doc.setFont('helvetica', 'bold');   doc.text('Né(e) le', margin, y)
-  doc.setFont('helvetica', 'normal'); doc.text(eleve.date_naissance || '-', margin + 16, y)
+  // Formater la date en DD/MM/YYYY (format sénégalais)
+  const dateNaissance = eleve.date_naissance
+    ? new Date(eleve.date_naissance).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : '-'
+  doc.setFont('helvetica', 'normal'); doc.text(dateNaissance, margin + 16, y)
   doc.setFont('helvetica', 'bold');   doc.text('Classe :', 112, y)
   doc.setFont('helvetica', 'normal'); doc.text(classe.nom || '-', 124, y)
 
@@ -153,7 +157,7 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
       n.subjects?.id === matiere.id
     ) || {}
 
-    const coef = matiere.coefficient ?? note.subjects?.coefficient ?? 1
+    const coef = Number(matiere.coefficient ?? note.subjects?.coefficient ?? 1)
     const bg   = idx % 2 === 0 ? blanc : grisLight
 
     doc.setFillColor(...bg)
@@ -276,15 +280,48 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
   doc.setDrawColor(150, 150, 150)
   doc.setLineWidth(0.2)
 
+  // Déterminer la case à cocher selon la moyenne générale
+  const moy = moyAffichee !== null ? moyAffichee : 0
+
+  // Gauche : comportement/résultat
+  // 0=Satisfaisant, 1=Peut Mieux Faire, 2=Insuffisant, 3=Risque Redoubler, 4=Risque exclusion
+  const cocheGauche = moy >= 14 ? 0
+                    : moy >= 10 ? 1
+                    : moy >= 8  ? 2
+                    : moy >= 5  ? 3
+                    : 4
+
+  // Droite : mention
+  // 0=Félicitations, 1=Encouragement, 2=Tableau d'honneur, 3=Avertissement, 4=Blâme
+  const cocheDroite = moy >= 16 ? 0
+                    : moy >= 14 ? 1
+                    : moy >= 12 ? 2
+                    : moy >= 8  ? 3
+                    : 4
+
   apprGauche.forEach((label, i) => {
     doc.rect(margin, y + i * 7, boxW, 7, 'S')
     doc.text(label, margin + 2, y + i * 7 + 4.5)
     doc.rect(margin + boxW - 8, y + i * 7 + 1.5, 5, 4, 'S')
+    // Cocher la case si c'est la bonne ligne
+    if (i === cocheGauche) {
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(0, 0, 0)
+      doc.text('✓', margin + boxW - 6.5, y + i * 7 + 4.8, { align: 'center' })
+      doc.setFont('helvetica', 'normal')
+    }
   })
   apprDroite.forEach((label, i) => {
     doc.rect(margin + boxW + 6, y + i * 7, boxW, 7, 'S')
     doc.text(label, margin + boxW + 8, y + i * 7 + 4.5)
     doc.rect(margin + boxW + 6 + boxW - 8, y + i * 7 + 1.5, 5, 4, 'S')
+    // Cocher la case si c'est la bonne ligne
+    if (i === cocheDroite) {
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(0, 0, 0)
+      doc.text('✓', margin + boxW + 6 + boxW - 6.5, y + i * 7 + 4.8, { align: 'center' })
+      doc.setFont('helvetica', 'normal')
+    }
   })
 
   y += 37

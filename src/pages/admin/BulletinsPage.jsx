@@ -8,6 +8,7 @@ import { calculerMoyenneGenerale, calculerRangs } from '../../utils/calculs'
 import { Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+// Vrais noms de colonnes en base : devoir_1, devoir_2, devoir_3, composition
 function moyenneDevoirs(note) {
   const vals = [note.devoir_1, note.devoir_2, note.devoir_3]
     .filter(v => v !== null && v !== undefined && v !== '')
@@ -26,83 +27,17 @@ function calculerMoy20(note) {
   return (mDev + compo) / 2
 }
 
-function anneeEnCours() {
-  const now = new Date()
-  const y   = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
-  return `${y}/${y + 1}`
-}
-
-/**
- * Calcule les rangs par matière pour tous les élèves de la classe.
- * Retourne : { [subject_id]: { [student_id]: rang } }
- */
-function calculerRangsParMatiere(eleves) {
-  // Collecter tous les subject_ids présents dans la classe
-  const subjectIds = new Set()
-  eleves.forEach(e => {
-    (e.grades || []).forEach(g => {
-      if (g.subjects?.id) subjectIds.add(g.subjects.id)
-    })
-  })
-
-  const rangsParMatiere = {}
-
-  subjectIds.forEach(subjectId => {
-    // Pour chaque matière, collecter les moyennes de chaque élève
-    const moyennesEleves = eleves
-      .map(e => {
-        const note = (e.grades || []).find(g => g.subjects?.id === subjectId)
-        if (!note) return null
-        const moy = calculerMoy20(note)
-        return { studentId: e.id, moyenne: moy }
-      })
-      .filter(x => x !== null && x.moyenne !== null)
-
-    // Trier par moyenne décroissante
-    moyennesEleves.sort((a, b) => b.moyenne - a.moyenne)
-
-    // Attribuer les rangs (gestion des ex-aequo)
-    const rangs = {}
-    let rang = 1
-    moyennesEleves.forEach((item, idx) => {
-      if (idx > 0 && item.moyenne === moyennesEleves[idx - 1].moyenne) {
-        // Ex-aequo : même rang que le précédent
-        rangs[item.studentId] = rangs[moyennesEleves[idx - 1].studentId]
-      } else {
-        rangs[item.studentId] = rang
-      }
-      rang++
-    })
-
-    rangsParMatiere[subjectId] = rangs
-  })
-
-  return rangsParMatiere
-}
-
 export default function BulletinsPage() {
   const { schoolId, school } = useAuth()
-
   const [classes, setClasses]                     = useState([])
   const [eleves, setEleves]                       = useState([])
   const [selectedClasse, setSelectedClasse]       = useState('')
   const [selectedTrimestre, setSelectedTrimestre] = useState('1')
   const [loading, setLoading]                     = useState(false)
   const [generating, setGenerating]               = useState(null)
-  const [anneeScolaire, setAnneeScolaire]         = useState(anneeEnCours())
-
-  // Rangs par matière calculés sur toute la classe
-  const [rangsMatiere, setRangsMatiere] = useState({})
 
   useEffect(() => { if (schoolId) fetchClasses() }, [schoolId])
-
-  useEffect(() => {
-    if (selectedClasse) {
-      const classe = classes.find(c => c.id === selectedClasse)
-      setAnneeScolaire(classe?.annee_scolaire || anneeEnCours())
-      fetchEleves()
-    }
-  }, [selectedClasse, selectedTrimestre])
+  useEffect(() => { if (selectedClasse) fetchEleves() }, [selectedClasse, selectedTrimestre])
 
   async function fetchClasses() {
     const { data } = await supabase
@@ -126,7 +61,7 @@ export default function BulletinsPage() {
           moyenne_matiere,
           trimestre,
           statut,
-          subjects(id, nom, coefficient)
+          subjects:matiere_id(nom, coefficient)
         )
       `)
       .eq('classe_id', selectedClasse)
@@ -134,24 +69,8 @@ export default function BulletinsPage() {
       .eq('grades.statut', 'valide')
 
     if (error) console.error('fetchEleves:', error)
-
-    const liste = data || []
-    setEleves(liste)
-
-    // ── Calculer les rangs par matière dès le chargement ──
-    const rangs = calculerRangsParMatiere(liste)
-    setRangsMatiere(rangs)
-
+    setEleves(data || [])
     setLoading(false)
-  }
-
-  function moyenneEleve(eleve) {
-    return calculerMoyenneGenerale(
-      (eleve.grades || []).map(n => ({
-        moyenne:     calculerMoy20(n),
-        coefficient: n.subjects?.coefficient ?? 1,
-      }))
-    )
   }
 
   async function genererUnBulletin(eleve) {
@@ -159,69 +78,63 @@ export default function BulletinsPage() {
     try {
       const notes = eleve.grades || []
 
-      // Matières dédupliquées par subject_id
-      const matiereMap = {}
-      notes.forEach(n => {
-        if (n.subjects) {
-          matiereMap[n.subjects.id] = {
-            id:          n.subjects.id,
-            nom:         n.subjects.nom,
-            coefficient: n.subjects.coefficient ?? 1,
-          }
-        }
-      })
-      const matieres = Object.values(matiereMap)
+      // Récupérer les coefficients réels depuis class_subjects
+      const subjectIds = notes.map(n => n.matiere_id).filter(Boolean)
+      let coefMap = {}
+      if (subjectIds.length > 0) {
+        const { data: csData } = await supabase
+          .from('class_subjects')
+          .select('subject_id, coefficient')
+          .eq('class_id', selectedClasse)
+          .in('subject_id', subjectIds)
+        csData?.forEach(cs => { coefMap[cs.subject_id] = cs.coefficient })
+      }
 
-      // Moyenne générale
+      // Enrichir matieres avec le vrai coefficient par classe
+      const matieres = notes.map(n => ({
+        ...n.subjects,
+        id:          n.matiere_id,
+        coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
+      }))
+
       const moyGenData = notes.map(n => ({
         moyenne:     calculerMoy20(n),
-        coefficient: n.subjects?.coefficient ?? 1,
+        coefficient: n.subjects?.coefficient || 1,
       }))
       const moyGen = calculerMoyenneGenerale(moyGenData)
 
-      // Rang général dans la classe
       const rangsData = eleves.map(e => ({
         id:      e.id,
         moyenne: calculerMoyenneGenerale(
           (e.grades || []).map(n => ({
             moyenne:     calculerMoy20(n),
-            coefficient: n.subjects?.coefficient ?? 1,
+            coefficient: n.subjects?.coefficient || 1,
           }))
         ),
       }))
-      const rangsGeneraux = calculerRangs(rangsData)
+      const rangs = calculerRangs(rangsData)
 
-      // ── Injecter le rang par matière dans chaque note ──
-      // On enrichit les notes avec le rang calculé localement
-      const notesAvecRang = notes.map(n => ({
-        ...n,
-        rang_matiere: n.subjects?.id
-          ? (rangsMatiere[n.subjects.id]?.[eleve.id] ?? null)
-          : null,
-      }))
-
-      const classe = classes.find(c => c.id === selectedClasse)
-        || (await supabase.from('classes').select('*').eq('id', selectedClasse).single()).data
+      const { data: classe } = await supabase
+        .from('classes').select('*').eq('id', selectedClasse).single()
 
       await genererBulletin({
         eleve,
         classe:    { ...classe, nb_eleves: eleves.length },
         ecole:     school,
-        notes:     notesAvecRang,   // notes enrichies avec rang_matiere
+        notes,
         matieres,
         resultats: {
           moyenne_generale: moyGen,
-          rang:             rangsGeneraux[eleve.id],
+          rang:             rangs[eleve.id],
           retards:          0,
           absences:         0,
         },
         trimestre: Number(selectedTrimestre),
-        annee:     anneeScolaire,
+        annee:     '2024/2025',
       })
 
-      toast.success(`Bulletin de ${eleve.prenom} ${eleve.nom} généré !`)
+      toast.success('Bulletin généré !')
     } catch (err) {
-      console.error(err)
       toast.error('Erreur : ' + err.message)
     } finally {
       setGenerating(null)
@@ -229,12 +142,18 @@ export default function BulletinsPage() {
   }
 
   async function genererTousLesBulletins() {
-    if (eleves.length === 0) return
-    toast('Génération en cours…', { icon: '⏳' })
     for (const eleve of eleves) {
       await genererUnBulletin(eleve)
     }
-    toast.success('Tous les bulletins ont été générés !')
+  }
+
+  function moyenneEleve(eleve) {
+    return calculerMoyenneGenerale(
+      (eleve.grades || []).map(n => ({
+        moyenne:     calculerMoy20(n),
+        coefficient: n.subjects?.coefficient || 1,
+      }))
+    )
   }
 
   return (
@@ -259,38 +178,23 @@ export default function BulletinsPage() {
             <Select label="Classe" value={selectedClasse}
               onChange={e => setSelectedClasse(e.target.value)}>
               <option value="">Choisir une classe</option>
-              {classes.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.nom} {c.annee_scolaire ? `— ${c.annee_scolaire}` : ''}
-                </option>
-              ))}
+              {classes.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
             </Select>
-            <Select label="Trimestre / Semestre" value={selectedTrimestre}
+            <Select label="Trimestre" value={selectedTrimestre}
               onChange={e => setSelectedTrimestre(e.target.value)}>
-              <option value="1">1er Semestre</option>
-              <option value="2">2ème Semestre</option>
-              <option value="3">3ème Semestre</option>
+              <option value="1">1er Trimestre</option>
+              <option value="2">2ème Trimestre</option>
+              <option value="3">3ème Trimestre</option>
             </Select>
           </div>
-          {selectedClasse && (
-            <p className="text-xs text-gray-400 mt-3 flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-400 rounded-full inline-block" />
-              Année scolaire détectée : <strong className="text-gray-600 ml-1">{anneeScolaire}</strong>
-            </p>
-          )}
         </Card>
 
         {selectedClasse && (
           <Card className="p-0 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-gray-100">
               <h2 className="font-bold text-gray-900">
-                {loading ? '…' : `${eleves.length} élève(s) avec notes validées`}
+                {eleves.length} élève(s) avec notes validées
               </h2>
-              {!loading && eleves.length > 0 && (
-                <span className="text-xs text-gray-400">
-                  {selectedTrimestre === '1' ? '1er' : selectedTrimestre === '2' ? '2ème' : '3ème'} Semestre · {anneeScolaire}
-                </span>
-              )}
             </div>
 
             {loading ? (
@@ -305,46 +209,44 @@ export default function BulletinsPage() {
               />
             ) : (
               <div className="divide-y divide-gray-50">
-                {eleves
-                  .slice()
-                  .sort((a, b) => (moyenneEleve(b) ?? -1) - (moyenneEleve(a) ?? -1))
-                  .map((eleve, idx) => {
-                    const moy = moyenneEleve(eleve)
-                    return (
-                      <div key={eleve.id}
-                        className="px-6 py-3.5 flex items-center justify-between hover:bg-gray-50/50">
-                        <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
-                            {idx + 1}
-                          </div>
-                          <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center
-                                          text-sm font-bold text-primary-700 shrink-0">
-                            {eleve.prenom?.[0]}{eleve.nom?.[0]}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900 text-sm">
-                              {eleve.prenom} {eleve.nom}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {eleve.grades?.length || 0} matière(s)
-                            </p>
-                          </div>
+                {eleves.map(eleve => {
+                  const moy = moyenneEleve(eleve)
+                  return (
+                    <div key={eleve.id}
+                      className="px-6 py-3.5 flex items-center justify-between hover:bg-gray-50/50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center
+                                        text-sm font-bold text-primary-700">
+                          {eleve.prenom?.[0]}{eleve.nom?.[0]}
                         </div>
-                        <div className="flex items-center gap-4">
-                          {moy !== null && (
-                            <span className={`font-bold text-sm ${moy >= 10 ? 'text-green-600' : 'text-red-500'}`}>
-                              {moy.toFixed(2)}/20
-                            </span>
-                          )}
-                          <Button size="sm" variant="secondary"
-                            loading={generating === eleve.id}
-                            onClick={() => genererUnBulletin(eleve)}>
-                            <Download size={14} /> PDF
-                          </Button>
+                        <div>
+                          <p className="font-semibold text-gray-900 text-sm">
+                            {eleve.prenom} {eleve.nom}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {eleve.grades?.length || 0} matière(s)
+                          </p>
                         </div>
                       </div>
-                    )
-                  })}
+                      <div className="flex items-center gap-4">
+                        {moy !== null && (
+                          <span className={`font-bold text-sm ${moy >= 10 ? 'text-green-600' : 'text-red-500'}`}>
+                            {moy.toFixed(2)}/20
+                          </span>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={generating === eleve.id}
+                          onClick={() => genererUnBulletin(eleve)}
+                        >
+                          <Download size={14} />
+                          PDF
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </Card>

@@ -202,14 +202,8 @@ export default function ProfNotes() {
           devoir_2:    clamp20(g.devoir_2),
           devoir_3:    clamp20(g.devoir_3),
           composition: clamp20(g.composition),
-          // Statut par colonne
+          // Statut par colonne uniquement
           [`${colonneActive}_statut`]: statut,
-          // Statut global = brouillon tant qu'une colonne n'est pas soumise
-          statut: statut === 'soumis'
-            ? [...colonnesSoumises, colonneActive].length === COLONNES.length
-              ? 'soumis'
-              : 'brouillon'
-            : g.statut || 'brouillon',
         }
       })
 
@@ -368,8 +362,10 @@ export default function ProfNotes() {
                     {eleves.map(eleve => {
                       const g   = grades[eleve.id] || {}
                       const moy = calculerMoyenne(g)
-                      const statusColor = g.statut === 'valide' ? 'green'
-                                        : g.statut === 'soumis' ? 'yellow' : 'gray'
+                      const statutsCol = COLONNES.map(col => g[`${col.field}_statut`] || 'brouillon')
+                      const nbValide   = statutsCol.filter(s => s === 'valide').length
+                      const nbSoumis   = statutsCol.filter(s => s === 'soumis').length
+                      const nbSaisi    = COLONNES.filter(col => g[col.field] !== null && g[col.field] !== undefined && g[col.field] !== '').length
                       return (
                         <tr key={eleve.id} className="hover:bg-gray-50/50">
                           <td className="px-4 py-2.5 font-medium text-gray-900">
@@ -378,7 +374,8 @@ export default function ProfNotes() {
                           {COLONNES.map(col => {
                             const soumise  = colonnesSoumises.includes(col.field)
                             const isActive = colonneActive === col.field
-                            const verrouille = soumise || g.statut === 'valide'
+                            const statutCol = g[`${col.statutField || col.field + '_statut'}`]
+                            const verrouille = soumise
                             return (
                               <td key={col.field} className="px-3 py-2">
                                 <input
@@ -407,9 +404,10 @@ export default function ProfNotes() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <Badge color={statusColor}>
-                              {g.statut === 'valide' ? 'Validé'
-                               : g.statut === 'soumis' ? 'Soumis' : 'Brouillon'}
+                            <Badge color={nbValide === 4 ? 'green' : nbSoumis + nbValide > 0 ? 'yellow' : 'gray'}>
+                              {nbValide === 4 ? 'Tout validé'
+                               : nbSaisi === 0 ? 'Vide'
+                               : `${nbValide}✓ ${nbSoumis}⏳ / ${nbSaisi}`}
                             </Badge>
                           </td>
                         </tr>

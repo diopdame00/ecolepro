@@ -8,7 +8,6 @@ import { calculerMoyenneGenerale, calculerRangs } from '../../utils/calculs'
 import { Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-    composition: note.composition_statut === 'valide' ? note.composition : null,
 // Vrais noms de colonnes en base : devoir_1, devoir_2, devoir_3, composition
 function moyenneDevoirs(note) {
   const vals = [note.devoir_1, note.devoir_2, note.devoir_3]

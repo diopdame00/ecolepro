@@ -36,10 +36,9 @@ export default function ParentBulletin() {
     setLoading(false)
   }
 
-  // Bulletin disponible si toutes les matières ont au moins une note (devoir ou compo)
-  const bulletinDisponible = notes.length > 0 && notes.every(n =>
-    n.devoir_1 != null || n.devoir_2 != null || n.devoir_3 != null || n.composition != null
-  )
+  // Bulletin disponible uniquement si TOUTES les matières de la classe sont notées
+  const matieresSansNote = notes.filter(n => !n.is_graded)
+  const bulletinDisponible = notes.length > 0 && matieresSansNote.length === 0
 
   async function telechargerBulletin() {
     if (!bulletinDisponible) return
@@ -125,9 +124,7 @@ export default function ParentBulletin() {
               </div>
               <div className="divide-y divide-gray-50">
                 {notes.map((n, i) => {
-                  const aNoteDevoir = n.devoir_1 != null || n.devoir_2 != null || n.devoir_3 != null
-                  const aNoteCompo  = n.composition != null
-                  const complete    = aNoteDevoir || aNoteCompo
+                  const complete = n.is_graded
                   return (
                     <div key={i} className="flex items-center justify-between px-4 py-3">
                       <div>
@@ -169,10 +166,8 @@ export default function ParentBulletin() {
                   Toutes les matières doivent avoir au moins une note pour pouvoir télécharger le bulletin.
                 </p>
                 <div className="mt-2 text-xs text-orange-500 font-medium">
-                  {notes.filter(n =>
-                    n.devoir_1 == null && n.devoir_2 == null &&
-                    n.devoir_3 == null && n.composition == null
-                  ).length} matière(s) sans note
+                  {matieresSansNote.length} matière(s) sans note :
+                  {' '}{matieresSansNote.map(n => n.matiere_nom).join(', ')}
                 </div>
               </div>
             )}

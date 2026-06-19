@@ -307,7 +307,9 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
     if (i === cocheGauche) {
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(0, 0, 0)
-      doc.text('✓', margin + boxW - 6.5, y + i * 7 + 4.8, { align: 'center' })
+      doc.setFontSize(9)
+      doc.text('\u2714', margin + boxW - 5.5, y + i * 7 + 5, { align: 'center' })
+      doc.setFontSize(8)
       doc.setFont('helvetica', 'normal')
     }
   })
@@ -319,7 +321,9 @@ export async function genererBulletin({ eleve, classe, ecole, notes, matieres, r
     if (i === cocheDroite) {
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(0, 0, 0)
-      doc.text('✓', margin + boxW + 6 + boxW - 6.5, y + i * 7 + 4.8, { align: 'center' })
+      doc.setFontSize(9)
+      doc.text('\u2714', margin + boxW + 6 + boxW - 5.5, y + i * 7 + 5, { align: 'center' })
+      doc.setFontSize(8)
       doc.setFont('helvetica', 'normal')
     }
   })

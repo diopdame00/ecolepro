@@ -97,6 +97,39 @@ export default function BulletinsPage() {
         coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
       }))
 
+      // Calculer le rang par matière pour chaque élève
+      // Pour chaque matière, classer tous les élèves par moy20 décroissant
+      const rangsParMatiere = {}
+      notes.forEach(note => {
+        const mid = note.matiere_id
+        // Collecter toutes les moy20 de cette matière dans la classe
+        const tousLesMoys = eleves
+          .flatMap(e => (e.grades || []).filter(g => g.matiere_id === mid))
+          .map(g => {
+            const devs = [g.devoir_1, g.devoir_2, g.devoir_3]
+              .filter(v => v !== null && v !== undefined && v !== '').map(Number)
+            const mDev = devs.length > 0 ? devs.reduce((a,b) => a+b,0)/devs.length : null
+            const comp = (g.composition !== null && g.composition !== undefined && g.composition !== '')
+                         ? Number(g.composition) : null
+            if (mDev === null && comp === null) return { student_id: g.student_id, moy: null }
+            if (mDev === null) return { student_id: g.student_id, moy: comp }
+            if (comp === null) return { student_id: g.student_id, moy: mDev }
+            return { student_id: g.student_id, moy: (mDev + comp) / 2 }
+          })
+          .filter(x => x.moy !== null)
+          .sort((a, b) => b.moy - a.moy)
+
+        // Rang de cet élève pour cette matière
+        const idx = tousLesMoys.findIndex(x => x.student_id === eleve.id)
+        rangsParMatiere[mid] = idx >= 0 ? idx + 1 : null
+      })
+
+      // Injecter rang_matiere dans chaque note
+      const notesAvecRang = notes.map(n => ({
+        ...n,
+        rang_matiere: rangsParMatiere[n.matiere_id] ?? null,
+      }))
+
       const moyGenData = notes.map(n => ({
         moyenne:     calculerMoy20(n),
         coefficient: n.subjects?.coefficient || 1,
@@ -121,7 +154,7 @@ export default function BulletinsPage() {
         eleve,
         classe:    { ...classe, nb_eleves: eleves.length },
         ecole:     school,
-        notes,
+        notes:     notesAvecRang,
         matieres,
         resultats: {
           moyenne_generale: moyGen,

@@ -24,11 +24,15 @@ export default function NotesValidation() {
 
   async function fetchGrades() {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('grades')
-      .select('*, students(prenom, nom), subjects(nom, coefficient), classes:students(classes(nom))')
+      .select('*, students(prenom, nom, classes(nom)), subjects(nom, coefficient)')
       .eq('school_id', schoolId)
       .order('updated_at', { ascending: false })
+    if (error) {
+      console.error('fetchGrades error:', error)
+      toast.error('Erreur de chargement : ' + error.message)
+    }
     setAllGrades(data || [])
     setLoading(false)
   }

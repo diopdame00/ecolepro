@@ -42,6 +42,7 @@ import SalairesPage       from './pages/admin/SalairesPage'
 // Parent / Élève
 import ParentDashboard  from './pages/parent/ParentDashboard'
 import ParentNotes      from './pages/parent/ParentNotes'
+import ParentBulletin   from './pages/parent/ParentBulletin'
 import ParentPaiements  from './pages/parent/ParentPaiements'
 import ParentEmploi     from './pages/parent/ParentEmploiDuTemps'
 import MonProfil        from './pages/parent/MonProfil'
@@ -139,6 +140,7 @@ function AppRouter() {
       <Route element={<ParentRoute />}>
         <Route path="/parent/:studentId"            element={<ParentDashboard />} />
         <Route path="/parent/:studentId/notes"      element={<ParentNotes />} />
+        <Route path="/parent/:studentId/bulletin"   element={<ParentBulletin />} />
         <Route path="/parent/:studentId/paiements"  element={<ParentPaiements />} />
         <Route path="/parent/:studentId/profil"     element={<MonProfil />} />
         <Route path="/parent/:studentId/emploi"     element={<ParentEmploi />} />

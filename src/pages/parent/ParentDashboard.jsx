@@ -119,7 +119,7 @@ export default function ParentDashboard() {
 
         {/* ── Cartes stats ── */}
         <div className="grid grid-cols-2 gap-3">
-          <Link to={`/parent/${studentId}/notes`}
+          <Link to={`/parent/${studentId}/bulletin`}
             className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-center
                        hover:shadow-md hover:border-primary-200 transition-all group">
             <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center mx-auto mb-2

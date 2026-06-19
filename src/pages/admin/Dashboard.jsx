@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
@@ -11,11 +12,28 @@ export default function AdminDashboard() {
   const [absenceNotifs, setAbsenceNotifs] = useState([])
   const [loading, setLoading] = useState(true)
 
+  const location = useLocation()
+
   useEffect(() => {
     if (schoolId) {
       fetchStats()
       fetchAbsenceNotifs()
     }
+  }, [schoolId])
+
+  // Recharger les stats à chaque fois qu'on revient sur cette page
+  // (ex: après avoir validé des notes puis être revenu via le menu)
+  useEffect(() => {
+    if (schoolId) fetchStats()
+  }, [location.key])
+
+  // Recharger aussi si l'utilisateur revient sur l'onglet/la fenêtre
+  useEffect(() => {
+    function handleFocus() {
+      if (schoolId) fetchStats()
+    }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
   }, [schoolId])
 
   async function fetchStats() {

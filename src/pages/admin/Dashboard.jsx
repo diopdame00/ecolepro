@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
@@ -9,10 +8,9 @@ import { Users, BookOpen, FileText, GraduationCap, CheckCircle, Clock, AlertCirc
 export default function AdminDashboard() {
   const { schoolId, school } = useAuth()
   const [stats, setStats] = useState({ eleves: 0, classes: 0, profs: 0, notesEnAttente: 0 })
+  const [gradeNotifs, setGradeNotifs] = useState([])
   const [absenceNotifs, setAbsenceNotifs] = useState([])
   const [loading, setLoading] = useState(true)
-
-  const location = useLocation()
 
   useEffect(() => {
     if (schoolId) {
@@ -21,44 +19,64 @@ export default function AdminDashboard() {
     }
   }, [schoolId])
 
-  // Recharger les stats à chaque fois qu'on revient sur cette page
-  // (ex: après avoir validé des notes puis être revenu via le menu)
-  useEffect(() => {
-    if (schoolId) fetchStats()
-  }, [location.key])
-
-  // Recharger aussi si l'utilisateur revient sur l'onglet/la fenêtre
-  useEffect(() => {
-    function handleFocus() {
-      if (schoolId) fetchStats()
-    }
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
-  }, [schoolId])
+  const COLS = [
+    { field: 'devoir_1_statut',    colonne: 'devoir_1',    label: 'Devoir 1' },
+    { field: 'devoir_2_statut',    colonne: 'devoir_2',    label: 'Devoir 2' },
+    { field: 'devoir_3_statut',    colonne: 'devoir_3',    label: 'Devoir 3' },
+    { field: 'composition_statut', colonne: 'composition', label: 'Composition' },
+  ]
 
   async function fetchStats() {
-    const [elevesRes, classesRes, profsRes, gradesRes] = await Promise.all([
+    const [elevesRes, classesRes, profsRes, gradesRes, seenRes] = await Promise.all([
       supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
       supabase.from('classes').select('id', { count: 'exact' }).eq('school_id', schoolId),
       supabase.from('users').select('id', { count: 'exact' }).eq('school_id', schoolId).eq('role', 'prof'),
       supabase.from('grades')
-        .select('devoir_1_statut, devoir_2_statut, devoir_3_statut, composition_statut')
+        .select('id, devoir_1_statut, devoir_2_statut, devoir_3_statut, composition_statut, students(prenom, nom), subjects(nom)')
         .eq('school_id', schoolId),
+      supabase.from('grade_notif_seen').select('grade_id, colonne').eq('school_id', schoolId),
     ])
 
-    // Compter chaque colonne soumise individuellement (notes en attente de validation)
-    const COLS = ['devoir_1_statut', 'devoir_2_statut', 'devoir_3_statut', 'composition_statut']
-    const notesEnAttente = (gradesRes.data || []).reduce((acc, g) => {
-      return acc + COLS.filter(c => g[c] === 'soumis').length
-    }, 0)
+    const seenSet = new Set((seenRes.data || []).map(s => `${s.grade_id}__${s.colonne}`))
 
+    // Construire la liste des notifications non lues
+    const notifs = []
+    ;(gradesRes.data || []).forEach(g => {
+      COLS.forEach(col => {
+        if (g[col.field] === 'soumis' && !seenSet.has(`${g.id}__${col.colonne}`)) {
+          notifs.push({
+            gradeId: g.id,
+            colonne: col.colonne,
+            label:   col.label,
+            eleve:   g.students,
+            matiere: g.subjects?.nom,
+          })
+        }
+      })
+    })
+
+    setGradeNotifs(notifs)
     setStats({
       eleves: elevesRes.count || 0,
       classes: classesRes.count || 0,
       profs: profsRes.count || 0,
-      notesEnAttente,
+      notesEnAttente: notifs.length,
     })
     setLoading(false)
+  }
+
+  async function marquerNoteLue(gradeId, colonne) {
+    await supabase.from('grade_notif_seen').insert({ grade_id: gradeId, colonne, school_id: schoolId })
+    setGradeNotifs(prev => prev.filter(n => !(n.gradeId === gradeId && n.colonne === colonne)))
+    setStats(prev => ({ ...prev, notesEnAttente: prev.notesEnAttente - 1 }))
+  }
+
+  async function marquerToutesNotesLues() {
+    const rows = gradeNotifs.map(n => ({ grade_id: n.gradeId, colonne: n.colonne, school_id: schoolId }))
+    if (rows.length === 0) return
+    await supabase.from('grade_notif_seen').insert(rows)
+    setGradeNotifs([])
+    setStats(prev => ({ ...prev, notesEnAttente: 0 }))
   }
 
   async function fetchAbsenceNotifs() {
@@ -186,15 +204,42 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Alertes notes */}
-        {stats.notesEnAttente > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
-            <AlertCircle size={20} className="text-yellow-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-semibold text-yellow-800">Notes en attente de validation</p>
-              <p className="text-sm text-yellow-600 mt-0.5">
-                {stats.notesEnAttente} soumission(s) de professeurs attendent votre validation.
-              </p>
+        {/* ── Bandeau notes en attente ── */}
+        {gradeNotifs.length > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-yellow-100 border-b border-yellow-200">
+              <div className="flex items-center gap-2">
+                <Clock size={16} className="text-yellow-600 shrink-0" />
+                <p className="text-sm font-bold text-yellow-800">
+                  {gradeNotifs.length} note(s) en attente de validation
+                </p>
+              </div>
+              <button
+                onClick={marquerToutesNotesLues}
+                className="text-xs text-yellow-700 font-semibold hover:text-yellow-900 transition-colors"
+              >
+                Tout marquer lu
+              </button>
+            </div>
+            <div className="divide-y divide-yellow-100 max-h-72 overflow-y-auto">
+              {gradeNotifs.map(n => (
+                <div key={`${n.gradeId}-${n.colonne}`} className="flex items-start gap-3 px-4 py-3">
+                  <AlertCircle size={16} className="text-yellow-400 mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-yellow-900">
+                      {n.eleve?.prenom} {n.eleve?.nom}
+                      <span className="font-normal text-yellow-600 ml-1">· {n.matiere} · {n.label}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => marquerNoteLue(n.gradeId, n.colonne)}
+                    className="p-1 hover:bg-yellow-200 rounded-lg transition-colors shrink-0"
+                    title="Marquer comme lu"
+                  >
+                    <CheckCircle size={14} className="text-yellow-500" />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}

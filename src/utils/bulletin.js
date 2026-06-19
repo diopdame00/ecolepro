@@ -305,10 +305,11 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
     const cby = y + i * lineH + (lineH - cbSize) / 2
     doc.rect(cbx, cby, cbSize, cbSize, 'S')
     if (i === cocheGauche) {
+      // Croix × dessinée (2 diagonales)
       doc.setDrawColor(0, 0, 0)
       doc.setLineWidth(0.8)
-      doc.line(cbx + 0.6, cby + cbSize * 0.5, cbx + cbSize * 0.4, cby + cbSize * 0.85)
-      doc.line(cbx + cbSize * 0.4, cby + cbSize * 0.85, cbx + cbSize - 0.5, cby + cbSize * 0.15)
+      doc.line(cbx + 0.5, cby + 0.5, cbx + cbSize - 0.5, cby + cbSize - 0.5)
+      doc.line(cbx + cbSize - 0.5, cby + 0.5, cbx + 0.5, cby + cbSize - 0.5)
       doc.setLineWidth(0.2)
       doc.setDrawColor(150, 150, 150)
     }
@@ -321,10 +322,11 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
     const cby = y + i * lineH + (lineH - cbSize) / 2
     doc.rect(cbx, cby, cbSize, cbSize, 'S')
     if (i === cocheDroite) {
+      // Croix × dessinée (2 diagonales)
       doc.setDrawColor(0, 0, 0)
       doc.setLineWidth(0.8)
-      doc.line(cbx + 0.6, cby + cbSize * 0.5, cbx + cbSize * 0.4, cby + cbSize * 0.85)
-      doc.line(cbx + cbSize * 0.4, cby + cbSize * 0.85, cbx + cbSize - 0.5, cby + cbSize * 0.15)
+      doc.line(cbx + 0.5, cby + 0.5, cbx + cbSize - 0.5, cby + cbSize - 0.5)
+      doc.line(cbx + cbSize - 0.5, cby + 0.5, cbx + 0.5, cby + cbSize - 0.5)
       doc.setLineWidth(0.2)
       doc.setDrawColor(150, 150, 150)
     }

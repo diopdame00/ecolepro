@@ -3,24 +3,15 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Select, EmptyState } from '../../components/ui'
-import { genererBulletin } from '../../utils/bulletin'
+import { genererBulletin, generateSinglePDF, generateBulkPDF } from '../../utils/bulletin'
 import { calculerMoyenneGenerale, calculerRangs } from '../../utils/calculs'
 import { Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// Une note (ligne grades) n'est exploitable pour le bulletin que colonne par colonne :
-// on ne garde que les valeurs dont le _statut correspondant est 'valide'.
-function valeursValidees(note) {
-  return {
-    devoir_1:    note.devoir_1_statut    === 'valide' ? note.devoir_1    : null,
-    devoir_2:    note.devoir_2_statut    === 'valide' ? note.devoir_2    : null,
-    devoir_3:    note.devoir_3_statut    === 'valide' ? note.devoir_3    : null,
     composition: note.composition_statut === 'valide' ? note.composition : null,
-  }
-}
-
-function moyenneDevoirs(valeurs) {
-  const vals = [valeurs.devoir_1, valeurs.devoir_2, valeurs.devoir_3]
+// Vrais noms de colonnes en base : devoir_1, devoir_2, devoir_3, composition
+function moyenneDevoirs(note) {
+  const vals = [note.devoir_1, note.devoir_2, note.devoir_3]
     .filter(v => v !== null && v !== undefined && v !== '')
     .map(Number)
   if (vals.length === 0) return null
@@ -28,20 +19,13 @@ function moyenneDevoirs(valeurs) {
 }
 
 function calculerMoy20(note) {
-  const valeurs = valeursValidees(note)
-  const mDev  = moyenneDevoirs(valeurs)
-  const compo = (valeurs.composition !== null && valeurs.composition !== undefined && valeurs.composition !== '')
-                ? Number(valeurs.composition) : null
+  const mDev  = moyenneDevoirs(note)
+  const compo = (note.composition !== null && note.composition !== undefined && note.composition !== '')
+                ? Number(note.composition) : null
   if (mDev === null && compo === null) return null
   if (mDev === null) return compo
   if (compo === null) return mDev
   return (mDev + compo) / 2
-}
-
-// Une matière est "prête" pour le bulletin dès qu'au moins une colonne est validée
-function aAuMoinsUneNoteValidee(note) {
-  return note.devoir_1_statut === 'valide' || note.devoir_2_statut === 'valide'
-      || note.devoir_3_statut === 'valide' || note.composition_statut === 'valide'
 }
 
 export default function BulletinsPage() {
@@ -76,29 +60,18 @@ export default function BulletinsPage() {
           devoir_2,
           devoir_3,
           composition,
-          devoir_1_statut,
-          devoir_2_statut,
-          devoir_3_statut,
-          composition_statut,
           moyenne_matiere,
           trimestre,
+          statut,
           subjects:matiere_id(nom, coefficient)
         )
       `)
       .eq('classe_id', selectedClasse)
       .eq('grades.trimestre', selectedTrimestre)
+      .eq('grades.statut', 'valide')
 
     if (error) console.error('fetchEleves:', error)
-
-    // Ne garder, pour chaque élève, que les matières ayant au moins une colonne validée
-    const elevesFiltres = (data || [])
-      .map(e => ({
-        ...e,
-        grades: (e.grades || []).filter(aAuMoinsUneNoteValidee),
-      }))
-      .filter(e => e.grades.length > 0)
-
-    setEleves(elevesFiltres)
+    setEleves(data || [])
     setLoading(false)
   }
 
@@ -183,7 +156,7 @@ export default function BulletinsPage() {
       const { data: classe } = await supabase
         .from('classes').select('*').eq('id', selectedClasse).single()
 
-      await genererBulletin({
+      await generateSinglePDF({
         eleve,
         classe:    { ...classe, nb_eleves: eleves.length },
         ecole:     school,
@@ -208,8 +181,91 @@ export default function BulletinsPage() {
   }
 
   async function genererTousLesBulletins() {
-    for (const eleve of eleves) {
-      await genererUnBulletin(eleve)
+    try {
+      // Préparer tous les bulletins
+      const bulletinsList = await Promise.all(eleves.map(async eleve => {
+        const notes      = eleve.grades || []
+        const subjectIds = notes.map(n => n.matiere_id).filter(Boolean)
+        let coefMap      = {}
+        if (subjectIds.length > 0) {
+          const { data: csData } = await supabase
+            .from('class_subjects')
+            .select('subject_id, coefficient')
+            .eq('class_id', selectedClasse)
+            .in('subject_id', subjectIds)
+          csData?.forEach(cs => { coefMap[cs.subject_id] = cs.coefficient })
+        }
+        const matieres = notes.map(n => ({
+          ...n.subjects,
+          id:          n.matiere_id,
+          coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
+        }))
+        const rangsParMatiere = {}
+        notes.forEach(note => {
+          const mid = note.matiere_id
+          const tousLesMoys = eleves
+            .flatMap(e => (e.grades || [])
+              .filter(g => g.matiere_id === mid)
+              .map(g => ({ ...g, student_id: g.student_id || e.id }))
+            )
+            .map(g => {
+              const devs = [g.devoir_1, g.devoir_2, g.devoir_3]
+                .filter(v => v !== null && v !== undefined && v !== '').map(Number)
+              const mDev = devs.length > 0 ? devs.reduce((a,b) => a+b,0)/devs.length : null
+              const comp = (g.composition !== null && g.composition !== undefined && g.composition !== '')
+                           ? Number(g.composition) : null
+              if (mDev === null && comp === null) return { student_id: g.student_id, moy: null }
+              if (mDev === null) return { student_id: g.student_id, moy: comp }
+              if (comp === null) return { student_id: g.student_id, moy: mDev }
+              return { student_id: g.student_id, moy: (mDev + comp) / 2 }
+            })
+            .filter(x => x.moy !== null)
+            .sort((a, b) => b.moy - a.moy)
+          const idx = tousLesMoys.findIndex(x => x.student_id === eleve.id)
+          rangsParMatiere[mid] = idx >= 0 ? idx + 1 : null
+        })
+        const notesAvecRang = notes.map(n => ({
+          ...n,
+          rang_matiere: rangsParMatiere[n.matiere_id] ?? null,
+        }))
+        const moyGenData = notes.map(n => ({
+          moyenne:     calculerMoy20(n),
+          coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
+        }))
+        const moyGen    = calculerMoyenneGenerale(moyGenData)
+        const rangsData = eleves.map(e => ({
+          id:      e.id,
+          moyenne: calculerMoyenneGenerale(
+            (e.grades || []).map(n => ({
+              moyenne:     calculerMoy20(n),
+              coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
+            }))
+          ),
+        }))
+        const rangs = calculerRangs(rangsData)
+        const { data: classe } = await supabase
+          .from('classes').select('*').eq('id', selectedClasse).single()
+        return {
+          eleve,
+          classe:    { ...classe, nb_eleves: eleves.length },
+          ecole:     school,
+          notes:     notesAvecRang,
+          matieres,
+          resultats: {
+            moyenne_generale: moyGen,
+            rang:             rangs[eleve.id],
+            retards:          0,
+            absences:         0,
+          },
+          trimestre: Number(selectedTrimestre),
+          annee:     '2024/2025',
+        }
+      }))
+
+      await generateBulkPDF(bulletinsList)
+      toast.success(`${eleves.length} bulletins générés !`)
+    } catch (err) {
+      toast.error('Erreur : ' + err.message)
     }
   }
 

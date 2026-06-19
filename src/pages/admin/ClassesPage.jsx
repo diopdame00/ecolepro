@@ -666,7 +666,7 @@ function OngletOptions({ classe, schoolId }) {
       supabase.from('class_subjects').select('*, subjects(nom)')
         .eq('class_id', classe.id).order('subjects(nom)'),
       supabase.from('students').select('id, prenom, nom')
-        .eq('class_id', classe.id).order('nom'),
+        .eq('classe_id', classe.id).order('nom'),
       supabase.from('student_options').select('*')
         .eq('class_id', classe.id),
     ])

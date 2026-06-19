@@ -8,9 +8,19 @@ import { calculerMoyenneGenerale, calculerRangs } from '../../utils/calculs'
 import { Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// Vrais noms de colonnes en base : devoir_1, devoir_2, devoir_3, composition
-function moyenneDevoirs(note) {
-  const vals = [note.devoir_1, note.devoir_2, note.devoir_3]
+// Une note (ligne grades) n'est exploitable pour le bulletin que colonne par colonne :
+// on ne garde que les valeurs dont le _statut correspondant est 'valide'.
+function valeursValidees(note) {
+  return {
+    devoir_1:    note.devoir_1_statut    === 'valide' ? note.devoir_1    : null,
+    devoir_2:    note.devoir_2_statut    === 'valide' ? note.devoir_2    : null,
+    devoir_3:    note.devoir_3_statut    === 'valide' ? note.devoir_3    : null,
+    composition: note.composition_statut === 'valide' ? note.composition : null,
+  }
+}
+
+function moyenneDevoirs(valeurs) {
+  const vals = [valeurs.devoir_1, valeurs.devoir_2, valeurs.devoir_3]
     .filter(v => v !== null && v !== undefined && v !== '')
     .map(Number)
   if (vals.length === 0) return null
@@ -18,13 +28,20 @@ function moyenneDevoirs(note) {
 }
 
 function calculerMoy20(note) {
-  const mDev  = moyenneDevoirs(note)
-  const compo = (note.composition !== null && note.composition !== undefined && note.composition !== '')
-                ? Number(note.composition) : null
+  const valeurs = valeursValidees(note)
+  const mDev  = moyenneDevoirs(valeurs)
+  const compo = (valeurs.composition !== null && valeurs.composition !== undefined && valeurs.composition !== '')
+                ? Number(valeurs.composition) : null
   if (mDev === null && compo === null) return null
   if (mDev === null) return compo
   if (compo === null) return mDev
   return (mDev + compo) / 2
+}
+
+// Une matière est "prête" pour le bulletin dès qu'au moins une colonne est validée
+function aAuMoinsUneNoteValidee(note) {
+  return note.devoir_1_statut === 'valide' || note.devoir_2_statut === 'valide'
+      || note.devoir_3_statut === 'valide' || note.composition_statut === 'valide'
 }
 
 export default function BulletinsPage() {
@@ -59,18 +76,29 @@ export default function BulletinsPage() {
           devoir_2,
           devoir_3,
           composition,
+          devoir_1_statut,
+          devoir_2_statut,
+          devoir_3_statut,
+          composition_statut,
           moyenne_matiere,
           trimestre,
-          statut,
           subjects:matiere_id(nom, coefficient)
         )
       `)
       .eq('classe_id', selectedClasse)
       .eq('grades.trimestre', selectedTrimestre)
-      .eq('grades.statut', 'valide')
 
     if (error) console.error('fetchEleves:', error)
-    setEleves(data || [])
+
+    // Ne garder, pour chaque élève, que les matières ayant au moins une colonne validée
+    const elevesFiltres = (data || [])
+      .map(e => ({
+        ...e,
+        grades: (e.grades || []).filter(aAuMoinsUneNoteValidee),
+      }))
+      .filter(e => e.grades.length > 0)
+
+    setEleves(elevesFiltres)
     setLoading(false)
   }
 

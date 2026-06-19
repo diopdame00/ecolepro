@@ -19,18 +19,26 @@ export default function AdminDashboard() {
   }, [schoolId])
 
   async function fetchStats() {
-    const [elevesRes, classesRes, profsRes, notesRes] = await Promise.all([
+    const [elevesRes, classesRes, profsRes, gradesRes] = await Promise.all([
       supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
       supabase.from('classes').select('id', { count: 'exact' }).eq('school_id', schoolId),
       supabase.from('users').select('id', { count: 'exact' }).eq('school_id', schoolId).eq('role', 'prof'),
-      supabase.from('grades').select('id', { count: 'exact' }).eq('school_id', schoolId).eq('statut', 'soumis'),
+      supabase.from('grades')
+        .select('devoir_1_statut, devoir_2_statut, devoir_3_statut, composition_statut')
+        .eq('school_id', schoolId),
     ])
+
+    // Compter chaque colonne soumise individuellement (notes en attente de validation)
+    const COLS = ['devoir_1_statut', 'devoir_2_statut', 'devoir_3_statut', 'composition_statut']
+    const notesEnAttente = (gradesRes.data || []).reduce((acc, g) => {
+      return acc + COLS.filter(c => g[c] === 'soumis').length
+    }, 0)
 
     setStats({
       eleves: elevesRes.count || 0,
       classes: classesRes.count || 0,
       profs: profsRes.count || 0,
-      notesEnAttente: notesRes.count || 0,
+      notesEnAttente,
     })
     setLoading(false)
   }

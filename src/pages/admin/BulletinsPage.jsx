@@ -35,6 +35,7 @@ export default function BulletinsPage() {
   const [selectedTrimestre, setSelectedTrimestre] = useState('1')
   const [loading, setLoading]                     = useState(false)
   const [generating, setGenerating]               = useState(null)
+  const [classeData, setClasseData]               = useState(null)  // données complètes de la classe
 
   useEffect(() => { if (schoolId) fetchClasses() }, [schoolId])
   useEffect(() => { if (selectedClasse) fetchEleves() }, [selectedClasse, selectedTrimestre])
@@ -47,6 +48,11 @@ export default function BulletinsPage() {
 
   async function fetchEleves() {
     setLoading(true)
+
+    // Charger la classe en même temps pour avoir annee_scolaire
+    const { data: classeRow } = await supabase
+      .from('classes').select('*').eq('id', selectedClasse).single()
+    setClasseData(classeRow || null)
     const { data, error } = await supabase
       .from('students')
       .select(`
@@ -152,12 +158,9 @@ export default function BulletinsPage() {
       }))
       const rangs = calculerRangs(rangsData)
 
-      const { data: classe } = await supabase
-        .from('classes').select('*').eq('id', selectedClasse).single()
-
       await generateSinglePDF({
         eleve,
-        classe:    { ...classe, nb_eleves: eleves.length },
+        classe:    { ...classeData, nb_eleves: eleves.length },
         ecole:     school,
         notes:     notesAvecRang,
         matieres,
@@ -168,7 +171,7 @@ export default function BulletinsPage() {
           absences:         0,
         },
         trimestre: Number(selectedTrimestre),
-        annee:     '2024/2025',
+        annee:     classeData?.annee_scolaire || new Date().getFullYear() + '/' + (new Date().getFullYear() + 1),
       })
 
       toast.success('Bulletin généré !')
@@ -257,7 +260,7 @@ export default function BulletinsPage() {
             absences:         0,
           },
           trimestre: Number(selectedTrimestre),
-          annee:     '2024/2025',
+          annee:     classe?.annee_scolaire || classeData?.annee_scolaire || new Date().getFullYear() + '/' + (new Date().getFullYear() + 1),
         }
       }))
 

@@ -59,26 +59,56 @@ export default function NotesValidation() {
   })
 
   async function validerColonne(gradeId, statutField) {
-    const { error } = await supabase.from('grades').update({ [statutField]: 'valide' }).eq('id', gradeId)
+    // Mettre à jour la colonne spécifique
+    const { error } = await supabase
+      .from('grades')
+      .update({ [statutField]: 'valide' })
+      .eq('id', gradeId)
     if (error) { toast.error('Erreur'); return }
+
+    // Vérifier si toutes les colonnes saisies sont maintenant validées
+    // pour mettre à jour le statut global
+    const grade = allGrades.find(g => g.id === gradeId)
+    if (grade) {
+      const updatedGrade = { ...grade, [statutField]: 'valide' }
+      const toutValide = COLONNES.every(col => {
+        const valeur = updatedGrade[col.field]
+        const statut = updatedGrade[col.statutField]
+        // Si pas de valeur saisie, on ignore cette colonne
+        if (valeur === null || valeur === undefined) return true
+        return statut === 'valide'
+      })
+      if (toutValide) {
+        await supabase.from('grades').update({ statut: 'valide' }).eq('id', gradeId)
+      }
+    }
+
     toast.success('Note validée !')
     fetchGrades()
   }
 
   async function rejeterColonne(gradeId, statutField) {
-    const { error } = await supabase.from('grades').update({ [statutField]: 'brouillon' }).eq('id', gradeId)
+    const { error } = await supabase
+      .from('grades')
+      .update({ [statutField]: 'brouillon', statut: 'brouillon' })
+      .eq('id', gradeId)
     if (error) { toast.error('Erreur'); return }
     toast.success('Renvoyé au professeur')
     fetchGrades()
   }
 
   async function validerTout() {
-    // Grouper par gradeId pour faire un seul update par ligne avec tous les statuts concernés
     const updatesParGrade = {}
     entries.forEach(e => {
       if (!updatesParGrade[e.gradeId]) updatesParGrade[e.gradeId] = {}
       updatesParGrade[e.gradeId][e.statutField] = 'valide'
     })
+
+    // Ajouter statut global 'valide' pour chaque grade
+    Object.keys(updatesParGrade).forEach(id => {
+      updatesParGrade[id].statut = 'valide'
+    })
+
     const promises = Object.entries(updatesParGrade).map(([id, fields]) =>
       supabase.from('grades').update(fields).eq('id', id)
     )

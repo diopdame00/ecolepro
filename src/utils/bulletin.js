@@ -422,7 +422,7 @@ export async function generateSinglePDF(params) {
   const { eleve, trimestre } = params
   const doc = creerDoc()
   placerGauche(doc, params)
-  dessinerSeparateur(doc)
+  dessinerSeparateur(doc)   // en dernier pour ne pas être effacé par le fond blanc
   doc.save(`bulletin_${eleve.nom}_${eleve.prenom}_T${trimestre}.pdf`)
 }
 
@@ -436,21 +436,21 @@ export async function generateBulkPDF(bulletinsList) {
 
   const doc = creerDoc()
 
-  bulletinsList.forEach((params, idx) => {
-    const position = idx % 2   // 0 = gauche, 1 = droite
+  for (let idx = 0; idx < bulletinsList.length; idx += 2) {
+    // Nouvelle page pour chaque paire (sauf la toute première)
+    if (idx > 0) doc.addPage()
 
-    // Nouvelle page à chaque paire (sauf la toute première)
-    if (idx > 0 && position === 0) doc.addPage()
+    // ── Bulletin GAUCHE ──
+    placerGauche(doc, bulletinsList[idx])
 
-    // Ligne de séparation : on la dessine à la création de chaque page
-    // (au moment du 1er bulletin gauche de chaque page)
-    if (position === 0) {
-      dessinerSeparateur(doc)
-      placerGauche(doc, params)
-    } else {
-      placerDroite(doc, params)
+    // ── Bulletin DROIT (s'il existe) ──
+    if (idx + 1 < bulletinsList.length) {
+      placerDroite(doc, bulletinsList[idx + 1])
     }
-  })
+
+    // ── Séparateur en DERNIER pour ne pas être recouvert par les fonds blancs ──
+    dessinerSeparateur(doc)
+  }
 
   const nomClasse = bulletinsList[0]?.classe?.nom?.replace(/\s+/g, '_') || 'classe'
   const trimestre = bulletinsList[0]?.trimestre || 1

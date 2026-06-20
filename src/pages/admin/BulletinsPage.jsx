@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Select, EmptyState } from '../../components/ui'
-import { genererBulletin } from '../../utils/bulletin'
+import { genererBulletin, generateSinglePDF, generateBulkPDF } from '../../utils/bulletin'
 import { calculerMoyenneGenerale, calculerRangs } from '../../utils/calculs'
 import { Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -53,6 +53,7 @@ export default function BulletinsPage() {
         *,
         grades!inner(
           id,
+          student_id,
           matiere_id,
           devoir_1,
           devoir_2,
@@ -104,7 +105,11 @@ export default function BulletinsPage() {
         const mid = note.matiere_id
         // Collecter toutes les moy20 de cette matière dans la classe
         const tousLesMoys = eleves
-          .flatMap(e => (e.grades || []).filter(g => g.matiere_id === mid))
+          .flatMap(e => (e.grades || [])
+            .filter(g => g.matiere_id === mid)
+            // Utiliser e.id comme student_id (grades imbriqués peut ne pas l'avoir)
+            .map(g => ({ ...g, student_id: g.student_id || e.id }))
+          )
           .map(g => {
             const devs = [g.devoir_1, g.devoir_2, g.devoir_3]
               .filter(v => v !== null && v !== undefined && v !== '').map(Number)
@@ -150,7 +155,7 @@ export default function BulletinsPage() {
       const { data: classe } = await supabase
         .from('classes').select('*').eq('id', selectedClasse).single()
 
-      await genererBulletin({
+      await generateSinglePDF({
         eleve,
         classe:    { ...classe, nb_eleves: eleves.length },
         ecole:     school,
@@ -175,8 +180,91 @@ export default function BulletinsPage() {
   }
 
   async function genererTousLesBulletins() {
-    for (const eleve of eleves) {
-      await genererUnBulletin(eleve)
+    try {
+      // Préparer tous les bulletins
+      const bulletinsList = await Promise.all(eleves.map(async eleve => {
+        const notes      = eleve.grades || []
+        const subjectIds = notes.map(n => n.matiere_id).filter(Boolean)
+        let coefMap      = {}
+        if (subjectIds.length > 0) {
+          const { data: csData } = await supabase
+            .from('class_subjects')
+            .select('subject_id, coefficient')
+            .eq('class_id', selectedClasse)
+            .in('subject_id', subjectIds)
+          csData?.forEach(cs => { coefMap[cs.subject_id] = cs.coefficient })
+        }
+        const matieres = notes.map(n => ({
+          ...n.subjects,
+          id:          n.matiere_id,
+          coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
+        }))
+        const rangsParMatiere = {}
+        notes.forEach(note => {
+          const mid = note.matiere_id
+          const tousLesMoys = eleves
+            .flatMap(e => (e.grades || [])
+              .filter(g => g.matiere_id === mid)
+              .map(g => ({ ...g, student_id: g.student_id || e.id }))
+            )
+            .map(g => {
+              const devs = [g.devoir_1, g.devoir_2, g.devoir_3]
+                .filter(v => v !== null && v !== undefined && v !== '').map(Number)
+              const mDev = devs.length > 0 ? devs.reduce((a,b) => a+b,0)/devs.length : null
+              const comp = (g.composition !== null && g.composition !== undefined && g.composition !== '')
+                           ? Number(g.composition) : null
+              if (mDev === null && comp === null) return { student_id: g.student_id, moy: null }
+              if (mDev === null) return { student_id: g.student_id, moy: comp }
+              if (comp === null) return { student_id: g.student_id, moy: mDev }
+              return { student_id: g.student_id, moy: (mDev + comp) / 2 }
+            })
+            .filter(x => x.moy !== null)
+            .sort((a, b) => b.moy - a.moy)
+          const idx = tousLesMoys.findIndex(x => x.student_id === eleve.id)
+          rangsParMatiere[mid] = idx >= 0 ? idx + 1 : null
+        })
+        const notesAvecRang = notes.map(n => ({
+          ...n,
+          rang_matiere: rangsParMatiere[n.matiere_id] ?? null,
+        }))
+        const moyGenData = notes.map(n => ({
+          moyenne:     calculerMoy20(n),
+          coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
+        }))
+        const moyGen    = calculerMoyenneGenerale(moyGenData)
+        const rangsData = eleves.map(e => ({
+          id:      e.id,
+          moyenne: calculerMoyenneGenerale(
+            (e.grades || []).map(n => ({
+              moyenne:     calculerMoy20(n),
+              coefficient: coefMap[n.matiere_id] ?? n.subjects?.coefficient ?? 1,
+            }))
+          ),
+        }))
+        const rangs = calculerRangs(rangsData)
+        const { data: classe } = await supabase
+          .from('classes').select('*').eq('id', selectedClasse).single()
+        return {
+          eleve,
+          classe:    { ...classe, nb_eleves: eleves.length },
+          ecole:     school,
+          notes:     notesAvecRang,
+          matieres,
+          resultats: {
+            moyenne_generale: moyGen,
+            rang:             rangs[eleve.id],
+            retards:          0,
+            absences:         0,
+          },
+          trimestre: Number(selectedTrimestre),
+          annee:     '2024/2025',
+        }
+      }))
+
+      await generateBulkPDF(bulletinsList)
+      toast.success(`${eleves.length} bulletins générés !`)
+    } catch (err) {
+      toast.error('Erreur : ' + err.message)
     }
   }
 

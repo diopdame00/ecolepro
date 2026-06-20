@@ -373,62 +373,87 @@ export async function generateSinglePDF(params) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// generateBulkPDF — A4 portrait, 2 bulletins par page
+// dessinerBulletinOffset
+// Identique à dessinerBulletin mais décalé de offsetX sur l'axe X.
+// Utilisé pour placer le bulletin droit en mode bulk paysage.
+// ══════════════════════════════════════════════════════════════════════════
+function dessinerBulletinOffset(doc, params, offsetY, pageW, bulletinH, offsetX) {
+  // jsPDF supporte les transformations via internal.write
+  // On applique une matrice de translation [1 0 0 1 tx ty] en points (1mm = 2.8346 pt)
+  const ptPerMm = 2.8346
+  const tx = offsetX * ptPerMm
+  doc.internal.write(`q 1 0 0 1 ${tx.toFixed(3)} 0 cm`)
+  dessinerBulletin(doc, params, offsetY, pageW, bulletinH)
+  doc.internal.write('Q')
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// generateBulkPDF — A4 Paysage (297mm × 210mm)
 //
-// Layout par page A4 (210mm × 297mm) :
-//   Bulletin 1 : offsetY=0,   hauteur=140mm  → zone 0–140mm
-//   Séparateur : 8mm pointillés              → zone 140–148mm
-//   Bulletin 2 : offsetY=148, hauteur=140mm  → zone 148–288mm
-//   Marge bas  : 9mm restants                → zone 288–297mm
+// Layout par page A4 paysage :
+//   Bulletin gauche  : x=0,      largeur=148.5mm, hauteur=210mm
+//   Ligne pointillée : x=148.5mm (verticale, du haut en bas)
+//   Bulletin droit   : x=148.5mm, largeur=148.5mm, hauteur=210mm
+//
+// Chaque bulletin reste en portrait dans sa moitié de la feuille.
 // ══════════════════════════════════════════════════════════════════════════
 export async function generateBulkPDF(bulletinsList) {
   if (!bulletinsList || bulletinsList.length === 0) return
 
-  const pageW       = 210    // largeur A4
-  const bulletinH   = 140    // hauteur de chaque bulletin
-  const separatorH  = 8      // espace de découpe entre les deux bulletins
-  const offset2     = bulletinH + separatorH  // = 148mm → début du 2ème bulletin
+  const pageW      = 297      // largeur page paysage
+  const pageH      = 210      // hauteur page paysage
+  const bulletinW  = 148.5    // largeur de chaque bulletin (pageW / 2)
+  const bulletinH  = 210      // hauteur = pleine page
+  const sepX       = 148.5    // position X de la ligne de découpe
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
 
   bulletinsList.forEach((params, idx) => {
-    const positionSurPage = idx % 2  // 0 = haut, 1 = bas
+    const positionSurPage = idx % 2  // 0 = gauche, 1 = droite
 
     // Nouvelle page pour chaque paire (sauf la toute première)
     if (idx > 0 && positionSurPage === 0) doc.addPage()
 
     if (positionSurPage === 0) {
-      // ── Bulletin du HAUT (0 → 140mm) ──
-      dessinerBulletin(doc, params, 0, pageW, bulletinH)
+      // ── Bulletin GAUCHE (x=0, largeur=148.5mm) ──
+      // On sauvegarde l'état graphique, translate, dessine, restore
+      doc.saveGraphicsState()
+      // Clip à la zone gauche
+      doc.setFillColor(255, 255, 255)
+      doc.rect(0, 0, bulletinW, bulletinH, 'F')
+      dessinerBulletin(doc, params, 0, bulletinW, bulletinH)
+      doc.restoreGraphicsState()
 
     } else {
-      // ── Séparateur de découpe (140mm → 148mm) ──
-      const sepY = bulletinH + separatorH / 2  // centre du séparateur = 144mm
-
-      // Fond légèrement grisé pour la zone de découpe
-      doc.setFillColor(248, 248, 248)
-      doc.rect(0, bulletinH, pageW, separatorH, 'F')
-
-      // Ligne pointillée de découpe
-      doc.setDrawColor(180, 180, 180)
+      // ── Ligne pointillée verticale de découpe ──
+      doc.setDrawColor(160, 160, 160)
       doc.setLineWidth(0.4)
       doc.setLineDash([3, 2], 0)
-      doc.line(5, sepY, pageW - 5, sepY)
+      doc.line(sepX, 3, sepX, pageH - 3)
       doc.setLineDash([], 0)
 
-      // Icône ciseaux symbolique (texte ✂)
+      // Icônes ciseaux en haut et bas de la ligne
       doc.setFontSize(7)
       doc.setTextColor(160, 160, 160)
       doc.setFont('helvetica', 'normal')
-      doc.text('✂', 5, sepY + 1.5)
-      doc.text('✂', pageW - 5, sepY + 1.5, { align: 'right' })
+      doc.text('✂', sepX, 5,         { align: 'center' })
+      doc.text('✂', sepX, pageH - 3, { align: 'center' })
 
-      // ── Bulletin du BAS (148mm → 288mm) ──
-      dessinerBulletin(doc, params, offset2, pageW, bulletinH)
+      // ── Bulletin DROIT (x=148.5mm, largeur=148.5mm) ──
+      // On utilise les transformations jsPDF pour décaler vers la droite
+      doc.saveGraphicsState()
+      doc.setFillColor(255, 255, 255)
+      doc.rect(bulletinW, 0, bulletinW, bulletinH, 'F')
+
+      // Astuce : on modifie temporairement les appels pour qu'ils écrivent
+      // dans la moitié droite en passant offsetX via une transformation interne.
+      // jsPDF ne supporte pas les transformations CSS donc on passe un offsetX
+      // à dessinerBulletin via un wrapper.
+      dessinerBulletinOffset(doc, params, 0, bulletinW, bulletinH, bulletinW)
+      doc.restoreGraphicsState()
     }
   })
 
-  // Nom du fichier avec classe et trimestre
   const nomClasse = bulletinsList[0]?.classe?.nom?.replace(/\s+/g, '_') || 'classe'
   const trimestre = bulletinsList[0]?.trimestre || 1
   doc.save(`bulletins_${nomClasse}_T${trimestre}.pdf`)

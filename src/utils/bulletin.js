@@ -360,97 +360,95 @@ function dessinerBulletin(doc, params, offsetY, pageW, bulletinH) {
   )
 }
 
+
 // ══════════════════════════════════════════════════════════════════════════
-// generateSinglePDF — A5 portrait (148.5mm × 210mm)
-// Téléchargement individuel depuis la liste ou la page parent
+// GABARIT UNIQUE — A4 Paysage (297mm × 210mm)
+//
+//  ┌─────────────────┬─────────────────┐
+//  │  Zone gauche    ┊  Zone droite    │
+//  │  148.5mm×210mm  ┊  148.5mm×210mm  │
+//  └─────────────────┴─────────────────┘
+//
+// Le bulletin (portrait) est toujours dessiné dans 148.5mm × 210mm.
+// La zone droite peut rester vide (téléchargement individuel ou dernier
+// bulletin impair d'un lot).
+// ══════════════════════════════════════════════════════════════════════════
+
+const BULLETIN_W = 148.5   // largeur d'une zone (mm)
+const BULLETIN_H = 210     // hauteur d'une zone = hauteur page paysage (mm)
+const PAGE_W     = 297     // largeur page A4 paysage (mm)
+const PAGE_H     = 210     // hauteur page A4 paysage (mm)
+const SEP_X      = 148.5   // position X de la ligne de séparation (mm)
+
+// ── Dessine la ligne pointillée verticale de séparation ──────────────────
+function dessinerSeparateur(doc) {
+  doc.setDrawColor(160, 160, 160)
+  doc.setLineWidth(0.4)
+  doc.setLineDash([3, 2], 0)
+  doc.line(SEP_X, 4, SEP_X, PAGE_H - 4)
+  doc.setLineDash([], 0)
+  doc.setFontSize(7)
+  doc.setTextColor(160, 160, 160)
+  doc.setFont('helvetica', 'normal')
+  doc.text('✂', SEP_X, 4,          { align: 'center' })
+  doc.text('✂', SEP_X, PAGE_H - 2, { align: 'center' })
+}
+
+// ── Dessine un bulletin dans la zone gauche (x=0) ────────────────────────
+function placerGauche(doc, params) {
+  dessinerBulletin(doc, params, 0, BULLETIN_W, BULLETIN_H)
+}
+
+// ── Dessine un bulletin dans la zone droite (x=148.5mm) ──────────────────
+// Utilise une transformation PDF native pour décaler horizontalement.
+function placerDroite(doc, params) {
+  const ptPerMm = 2.8346
+  const tx = SEP_X * ptPerMm
+  doc.internal.write(`q 1 0 0 1 ${tx.toFixed(3)} 0 cm`)
+  dessinerBulletin(doc, params, 0, BULLETIN_W, BULLETIN_H)
+  doc.internal.write('Q')
+}
+
+// ── Crée un nouveau document A4 paysage ──────────────────────────────────
+function creerDoc() {
+  return new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// generateSinglePDF — Téléchargement individuel
+// → 1 page A4 paysage, bulletin à gauche, zone droite vide
 // ══════════════════════════════════════════════════════════════════════════
 export async function generateSinglePDF(params) {
   const { eleve, trimestre } = params
-  // A5 : 148.5mm largeur × 210mm hauteur
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' })
-  dessinerBulletin(doc, params, 0, 148.5, 210)
+  const doc = creerDoc()
+  placerGauche(doc, params)
+  dessinerSeparateur(doc)
   doc.save(`bulletin_${eleve.nom}_${eleve.prenom}_T${trimestre}.pdf`)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// dessinerBulletinOffset
-// Identique à dessinerBulletin mais décalé de offsetX sur l'axe X.
-// Utilisé pour placer le bulletin droit en mode bulk paysage.
-// ══════════════════════════════════════════════════════════════════════════
-function dessinerBulletinOffset(doc, params, offsetY, pageW, bulletinH, offsetX) {
-  // jsPDF supporte les transformations via internal.write
-  // On applique une matrice de translation [1 0 0 1 tx ty] en points (1mm = 2.8346 pt)
-  const ptPerMm = 2.8346
-  const tx = offsetX * ptPerMm
-  doc.internal.write(`q 1 0 0 1 ${tx.toFixed(3)} 0 cm`)
-  dessinerBulletin(doc, params, offsetY, pageW, bulletinH)
-  doc.internal.write('Q')
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// generateBulkPDF — A4 Paysage (297mm × 210mm)
-//
-// Layout par page A4 paysage :
-//   Bulletin gauche  : x=0,      largeur=148.5mm, hauteur=210mm
-//   Ligne pointillée : x=148.5mm (verticale, du haut en bas)
-//   Bulletin droit   : x=148.5mm, largeur=148.5mm, hauteur=210mm
-//
-// Chaque bulletin reste en portrait dans sa moitié de la feuille.
+// generateBulkPDF — Téléchargement du lot complet
+// → Pages A4 paysage remplies 2 par 2
+//   Dernier bulletin impair → gauche, droite vide
 // ══════════════════════════════════════════════════════════════════════════
 export async function generateBulkPDF(bulletinsList) {
   if (!bulletinsList || bulletinsList.length === 0) return
 
-  const pageW      = 297      // largeur page paysage
-  const pageH      = 210      // hauteur page paysage
-  const bulletinW  = 148.5    // largeur de chaque bulletin (pageW / 2)
-  const bulletinH  = 210      // hauteur = pleine page
-  const sepX       = 148.5    // position X de la ligne de découpe
-
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const doc = creerDoc()
 
   bulletinsList.forEach((params, idx) => {
-    const positionSurPage = idx % 2  // 0 = gauche, 1 = droite
+    const position = idx % 2   // 0 = gauche, 1 = droite
 
-    // Nouvelle page pour chaque paire (sauf la toute première)
-    if (idx > 0 && positionSurPage === 0) doc.addPage()
+    // Nouvelle page à chaque paire (sauf la toute première)
+    if (idx > 0 && position === 0) doc.addPage()
 
-    if (positionSurPage === 0) {
-      // ── Bulletin GAUCHE (x=0, largeur=148.5mm) ──
-      // On sauvegarde l'état graphique, translate, dessine, restore
-      doc.saveGraphicsState()
-      // Clip à la zone gauche
-      doc.setFillColor(255, 255, 255)
-      doc.rect(0, 0, bulletinW, bulletinH, 'F')
-      dessinerBulletin(doc, params, 0, bulletinW, bulletinH)
-      doc.restoreGraphicsState()
-
+    // Ligne de séparation : on la dessine à la création de chaque page
+    // (au moment du 1er bulletin gauche de chaque page)
+    if (position === 0) {
+      dessinerSeparateur(doc)
+      placerGauche(doc, params)
     } else {
-      // ── Ligne pointillée verticale de découpe ──
-      doc.setDrawColor(160, 160, 160)
-      doc.setLineWidth(0.4)
-      doc.setLineDash([3, 2], 0)
-      doc.line(sepX, 3, sepX, pageH - 3)
-      doc.setLineDash([], 0)
-
-      // Icônes ciseaux en haut et bas de la ligne
-      doc.setFontSize(7)
-      doc.setTextColor(160, 160, 160)
-      doc.setFont('helvetica', 'normal')
-      doc.text('✂', sepX, 5,         { align: 'center' })
-      doc.text('✂', sepX, pageH - 3, { align: 'center' })
-
-      // ── Bulletin DROIT (x=148.5mm, largeur=148.5mm) ──
-      // On utilise les transformations jsPDF pour décaler vers la droite
-      doc.saveGraphicsState()
-      doc.setFillColor(255, 255, 255)
-      doc.rect(bulletinW, 0, bulletinW, bulletinH, 'F')
-
-      // Astuce : on modifie temporairement les appels pour qu'ils écrivent
-      // dans la moitié droite en passant offsetX via une transformation interne.
-      // jsPDF ne supporte pas les transformations CSS donc on passe un offsetX
-      // à dessinerBulletin via un wrapper.
-      dessinerBulletinOffset(doc, params, 0, bulletinW, bulletinH, bulletinW)
-      doc.restoreGraphicsState()
+      placerDroite(doc, params)
     }
   })
 
@@ -460,11 +458,9 @@ export async function generateBulkPDF(bulletinsList) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// genererBulletin — A4 pleine page (compatibilité existante)
+// genererBulletin — alias de compatibilité (anciens appels)
 // ══════════════════════════════════════════════════════════════════════════
 export async function genererBulletin(params) {
-  const { eleve, trimestre } = params
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  dessinerBulletin(doc, params, 0, 210, 297)
-  doc.save(`bulletin_${eleve.nom}_${eleve.prenom}_T${trimestre}.pdf`)
+  return generateSinglePDF(params)
 }
+

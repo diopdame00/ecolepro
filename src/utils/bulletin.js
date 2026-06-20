@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import { getAppreciation, formatNote } from './calculs'
 
+// ── Helpers ────────────────────────────────────────────────────────────────
 function moyenneDevoirs(note) {
   const vals = [note.devoir_1, note.devoir_2, note.devoir_3]
     .filter(v => v !== null && v !== undefined && v !== '')
@@ -24,16 +25,20 @@ function formatRang(rang) {
   return rang === 1 ? '1er' : `${rang}ème`
 }
 
-// ── Fonction interne : dessine un bulletin ────────────────────────────────
-function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultats, trimestre, annee }, offsetY, pageW, halfH) {
+// ══════════════════════════════════════════════════════════════════════════
+// dessinerBulletin
+// Dessine UN bulletin dans un espace défini par offsetY et bulletinH.
+// pageW  : largeur de la page (148 pour A5, 210 pour A4)
+// bulletinH : hauteur allouée à CE bulletin (210 pour A5, 140 pour bulk A4)
+// ══════════════════════════════════════════════════════════════════════════
+function dessinerBulletin(doc, params, offsetY, pageW, bulletinH) {
+  const { eleve, classe, ecole, notes, matieres, resultats, trimestre, annee } = params
 
-  const margin   = 12
+  const margin   = 10
   const contentW = pageW - margin * 2
 
-  // ── Colonnes proportionnelles selon contentW ──────────────────
-  // A4 contentW=186 : [53,16,16,16,11,16,11,47]
-  // A5 contentW=124 : [35,11,11,11, 7,11, 8,30]
-  const scale    = contentW / 186
+  // ── Colonnes proportionnelles ─────────────────────────────────
+  const scale     = contentW / 186
   const colWidths = [
     Math.round(53 * scale),
     Math.round(16 * scale),
@@ -42,9 +47,8 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
     Math.round(11 * scale),
     Math.round(16 * scale),
     Math.round(11 * scale),
-    0,  // dernière colonne prend le reste
+    0,
   ]
-  // Dernière colonne = ce qui reste exactement
   colWidths[7] = contentW - colWidths.slice(0, 7).reduce((a, b) => a + b, 0)
 
   const noir      = [0, 0, 0]
@@ -53,15 +57,22 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   const grisLight = [240, 240, 240]
   const blanc     = [255, 255, 255]
 
-  const fontSize  = contentW >= 180 ? 8 : 7      // plus petit en A5
-  const rowH      = contentW >= 180 ? 6.5 : 5.5  // lignes plus petites en A5
+  // Adapter la densité selon la hauteur disponible
+  // A5 (210mm) → rowH=6.5, bulk (140mm) → rowH=5.2
+  const isBulk    = bulletinH <= 145
+  const fontSize  = isBulk ? 6.5 : 8
+  const rowH      = isBulk ? 5.2 : 6.5
 
   const semestreLabel =
     trimestre === 1 ? '1er Semestre' :
     trimestre === 2 ? '2ème Semestre' :
                      '3ème Semestre'
 
-  let y = offsetY + 10
+  // Fond blanc pour ce bulletin (important en bulk pour séparer visuellement)
+  doc.setFillColor(255, 255, 255)
+  doc.rect(0, offsetY, pageW, bulletinH, 'F')
+
+  let y = offsetY + (isBulk ? 7 : 10)
 
   // ── EN-TÊTE ──────────────────────────────────────────────────────────
   const startY = y
@@ -69,26 +80,26 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...grisFonce)
   doc.text('RÉPUBLIQUE DU SÉNÉGAL', margin, y)
-  y += 4
+  y += isBulk ? 3.5 : 4.5
 
   doc.setFont('helvetica', 'normal')
-  if (ecole.ia)  { doc.text(`IA : ${ecole.ia}`,   margin, y); y += 4 }
-  if (ecole.ief) { doc.text(`IEF : ${ecole.ief}`, margin, y); y += 4 }
+  if (ecole.ia)  { doc.text(`IA : ${ecole.ia}`,   margin, y); y += isBulk ? 3.5 : 4.5 }
+  if (ecole.ief) { doc.text(`IEF : ${ecole.ief}`, margin, y); y += isBulk ? 3.5 : 4.5 }
   doc.setFont('helvetica', 'bold')
   doc.text((ecole.name || 'ÉCOLE').toUpperCase(), margin, y)
 
   doc.setFont('helvetica', 'normal')
   doc.text(`Année Scolaire : ${annee}`, pageW - margin, startY, { align: 'right' })
-  doc.text(semestreLabel, pageW - margin, startY + 5, { align: 'right' })
+  doc.text(semestreLabel, pageW - margin, startY + (isBulk ? 4 : 5), { align: 'right' })
 
-  y += 5
+  y += isBulk ? 4 : 5
   doc.setDrawColor(...noir)
-  doc.setLineWidth(0.6)
+  doc.setLineWidth(0.5)
   doc.line(margin, y, pageW - margin, y)
 
   // ── TITRE ────────────────────────────────────────────────────────────
-  y += 5
-  doc.setFontSize(fontSize + 2)
+  y += isBulk ? 4 : 5
+  doc.setFontSize(fontSize + (isBulk ? 1.5 : 2))
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...noir)
   doc.text('BULLETIN DE NOTES', pageW / 2, y, { align: 'center' })
@@ -97,7 +108,7 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   doc.line(margin, y, pageW - margin, y)
 
   // ── INFOS ÉLÈVE ──────────────────────────────────────────────────────
-  y += 5
+  y += isBulk ? 3.5 : 5
   doc.setFontSize(fontSize)
   doc.setTextColor(...noir)
 
@@ -112,13 +123,13 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   doc.setFont('helvetica', 'bold');   doc.text('Nom', midX, y)
   doc.setFont('helvetica', 'normal'); doc.text((eleve.nom || '-').toUpperCase(), midX + 10, y)
 
-  y += 5
+  y += isBulk ? 3.5 : 5
   doc.setFont('helvetica', 'bold');   doc.text('Né(e) le', margin, y)
   doc.setFont('helvetica', 'normal'); doc.text(dateNaissance, margin + 15, y)
   doc.setFont('helvetica', 'bold');   doc.text('Classe :', midX, y)
   doc.setFont('helvetica', 'normal'); doc.text(classe.nom || '-', midX + 14, y)
 
-  y += 5
+  y += isBulk ? 3.5 : 5
   doc.setFont('helvetica', 'bold');   doc.text('Matricule :', margin, y)
   doc.setFont('helvetica', 'normal'); doc.text(eleve.unique_code || '-', margin + 18, y)
   doc.setFont('helvetica', 'bold');   doc.text("Nbre d'élèves", midX, y)
@@ -127,10 +138,9 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   doc.setFont('helvetica', 'normal'); doc.text(eleve.redoublant ? 'Oui' : 'Non', midX + 44, y)
 
   // ── TABLEAU DES NOTES ────────────────────────────────────────────────
-  y += 7
+  y += isBulk ? 5 : 7
   const headers = ['DISCIPLINES', 'DEVOIR\n(moy)', 'COMPO', 'MOY/20', 'COEF', 'MOY X', 'RANG', 'APPRÉCIATION']
 
-  // En-tête tableau
   doc.setFillColor(...noir)
   doc.rect(margin, y, contentW, rowH, 'F')
   doc.setTextColor(...blanc)
@@ -243,11 +253,10 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   )
   y += rowH
 
-  // ── Ligne Moyenne / Rang / Retards / Absences ──
+  // ── Bande Moyenne / Rang / Retards / Absences ──
   const moyAffichee = moyenneGenerale ?? resultats?.moyenne_generale ?? null
-
   y += 2
-  const bandeH = 8
+  const bandeH = isBulk ? 6 : 8
   doc.setFontSize(fontSize - 0.5)
   doc.setFont('helvetica', 'bold')
   doc.setDrawColor(...noir)
@@ -259,30 +268,27 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   seg.forEach((w, i) => { xb += w; if (i < seg.length - 1) doc.line(xb, y, xb, y + bandeH) })
 
   const pad = 2
-  doc.text('Moyenne', margin + pad, y + bandeH * 0.5)
+  doc.text('Moyenne', margin + pad, y + bandeH * 0.62)
   doc.setFont('helvetica', 'normal')
-  doc.text(`${moyAffichee !== null ? formatNote(moyAffichee) : '-'} /20`, margin + pad + 17, y + bandeH * 0.5)
-
+  doc.text(`${moyAffichee !== null ? formatNote(moyAffichee) : '-'} /20`, margin + pad + 17, y + bandeH * 0.62)
   doc.setFont('helvetica', 'bold')
-  doc.text('Rang', margin + seg[0] + pad, y + bandeH * 0.5)
+  doc.text('Rang', margin + seg[0] + pad, y + bandeH * 0.62)
   doc.setFont('helvetica', 'normal')
-  doc.text(resultats?.rang ? formatRang(resultats.rang) : '-', margin + seg[0] + pad + 12, y + bandeH * 0.5)
-
+  doc.text(resultats?.rang ? formatRang(resultats.rang) : '-', margin + seg[0] + pad + 12, y + bandeH * 0.62)
   doc.setFont('helvetica', 'bold')
-  doc.text('Retards', margin + seg[0] + seg[1] + pad, y + bandeH * 0.5)
+  doc.text('Retards', margin + seg[0] + seg[1] + pad, y + bandeH * 0.62)
   doc.setFont('helvetica', 'normal')
-  doc.text(String(resultats?.retards ?? 0), margin + seg[0] + seg[1] + pad + 16, y + bandeH * 0.5)
-
+  doc.text(String(resultats?.retards ?? 0), margin + seg[0] + seg[1] + pad + 16, y + bandeH * 0.62)
   doc.setFont('helvetica', 'bold')
-  doc.text('Absences', margin + seg[0] + seg[1] + seg[2] + pad, y + bandeH * 0.5)
+  doc.text('Absences', margin + seg[0] + seg[1] + seg[2] + pad, y + bandeH * 0.62)
   doc.setFont('helvetica', 'normal')
-  doc.text(String(resultats?.absences ?? 0), margin + seg[0] + seg[1] + seg[2] + pad + 18, y + bandeH * 0.5)
+  doc.text(String(resultats?.absences ?? 0), margin + seg[0] + seg[1] + seg[2] + pad + 18, y + bandeH * 0.62)
 
-  y += bandeH + 8
+  y += bandeH + (isBulk ? 3 : 5)
 
   // ── CASES À COCHER ───────────────────────────────────────────────────
-  const boxW       = (contentW / 2) - 3
-  const lineH      = 6
+  const boxW    = (contentW / 2) - 3
+  const lineH   = isBulk ? 4.8 : 6
   const apprGauche = ['Satisfaisant doit continuer', 'Peut Mieux Faire', 'Insuffisant', 'Risque de Redoubler', "Risque l'exclusion"]
   const apprDroite = ['Félicitations', 'Encouragement', "Tableau d'honneur", 'Avertissement', 'Blâme']
 
@@ -290,49 +296,43 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
   const cocheGauche = moy >= 14 ? 0 : moy >= 10 ? 1 : moy >= 8 ? 2 : moy >= 5 ? 3 : 4
   const cocheDroite = moy >= 16 ? 0 : moy >= 14 ? 1 : moy >= 12 ? 2 : moy >= 8 ? 3 : 4
 
+  const cbSize = isBulk ? 3 : 4
+
   doc.setFontSize(fontSize - 1)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(...noir)
   doc.setDrawColor(150, 150, 150)
   doc.setLineWidth(0.2)
 
-  const cbSize = 4  // taille de la case à cocher
-
   apprGauche.forEach((label, i) => {
     doc.rect(margin, y + i * lineH, boxW, lineH, 'S')
-    doc.text(label, margin + 2, y + i * lineH + lineH * 0.68)
+    doc.text(label, margin + 1.5, y + i * lineH + lineH * 0.68)
     const cbx = margin + boxW - cbSize - 1.5
     const cby = y + i * lineH + (lineH - cbSize) / 2
     doc.rect(cbx, cby, cbSize, cbSize, 'S')
     if (i === cocheGauche) {
-      // Croix × dessinée (2 diagonales)
-      doc.setDrawColor(0, 0, 0)
-      doc.setLineWidth(0.8)
-      doc.line(cbx + 0.5, cby + 0.5, cbx + cbSize - 0.5, cby + cbSize - 0.5)
-      doc.line(cbx + cbSize - 0.5, cby + 0.5, cbx + 0.5, cby + cbSize - 0.5)
-      doc.setLineWidth(0.2)
-      doc.setDrawColor(150, 150, 150)
+      doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.7)
+      doc.line(cbx + 0.4, cby + 0.4, cbx + cbSize - 0.4, cby + cbSize - 0.4)
+      doc.line(cbx + cbSize - 0.4, cby + 0.4, cbx + 0.4, cby + cbSize - 0.4)
+      doc.setLineWidth(0.2); doc.setDrawColor(150, 150, 150)
     }
   })
 
   apprDroite.forEach((label, i) => {
     doc.rect(margin + boxW + 6, y + i * lineH, boxW, lineH, 'S')
-    doc.text(label, margin + boxW + 8, y + i * lineH + lineH * 0.68)
+    doc.text(label, margin + boxW + 7.5, y + i * lineH + lineH * 0.68)
     const cbx = margin + boxW + 6 + boxW - cbSize - 1.5
     const cby = y + i * lineH + (lineH - cbSize) / 2
     doc.rect(cbx, cby, cbSize, cbSize, 'S')
     if (i === cocheDroite) {
-      // Croix × dessinée (2 diagonales)
-      doc.setDrawColor(0, 0, 0)
-      doc.setLineWidth(0.8)
-      doc.line(cbx + 0.5, cby + 0.5, cbx + cbSize - 0.5, cby + cbSize - 0.5)
-      doc.line(cbx + cbSize - 0.5, cby + 0.5, cbx + 0.5, cby + cbSize - 0.5)
-      doc.setLineWidth(0.2)
-      doc.setDrawColor(150, 150, 150)
+      doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.7)
+      doc.line(cbx + 0.4, cby + 0.4, cbx + cbSize - 0.4, cby + cbSize - 0.4)
+      doc.line(cbx + cbSize - 0.4, cby + 0.4, cbx + 0.4, cby + cbSize - 0.4)
+      doc.setLineWidth(0.2); doc.setDrawColor(150, 150, 150)
     }
   })
 
-  y += apprGauche.length * lineH + 5
+  y += apprGauche.length * lineH + (isBulk ? 2 : 4)
 
   // ── OBSERVATIONS + SIGNATURE ─────────────────────────────────────────
   doc.setFontSize(fontSize - 0.5)
@@ -343,61 +343,100 @@ function dessinerBulletin(doc, { eleve, classe, ecole, notes, matieres, resultat
 
   doc.setDrawColor(150, 150, 150)
   doc.setLineWidth(0.25)
-  const obsH = contentW >= 180 ? 22 : 16
-  doc.rect(margin, y + 3, boxW, obsH, 'S')
-  doc.rect(margin + boxW + 6, y + 3, boxW, obsH, 'S')
+  // Hauteur de la boîte : prend tout l'espace restant jusqu'à 5mm du bas
+  const obsH = Math.max(8, offsetY + bulletinH - y - 8)
+  doc.rect(margin, y + 2, boxW, obsH, 'S')
+  doc.rect(margin + boxW + 6, y + 2, boxW, obsH, 'S')
 
   // ── PIED DE PAGE ─────────────────────────────────────────────────────
-  doc.setFontSize(6)
+  doc.setFontSize(5.5)
   doc.setTextColor(...grisMoyen)
   doc.setFont('helvetica', 'normal')
-  doc.text('Généré par EcolePro — ecolepro.site', pageW / 2, offsetY + halfH - 3, { align: 'center' })
+  doc.text(
+    'Généré par EcolePro — ecolepro.site',
+    pageW / 2,
+    offsetY + bulletinH - 2,
+    { align: 'center' }
+  )
 }
 
-// ══════════════════════════════════════════════════════════════════
-// generateSinglePDF : A5 portrait pour 1 élève
-// ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// generateSinglePDF — A5 portrait (148.5mm × 210mm)
+// Téléchargement individuel depuis la liste ou la page parent
+// ══════════════════════════════════════════════════════════════════════════
 export async function generateSinglePDF(params) {
   const { eleve, trimestre } = params
+  // A5 : 148.5mm largeur × 210mm hauteur
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' })
-  dessinerBulletin(doc, params, 0, 148, 210)
+  dessinerBulletin(doc, params, 0, 148.5, 210)
   doc.save(`bulletin_${eleve.nom}_${eleve.prenom}_T${trimestre}.pdf`)
 }
 
-// ══════════════════════════════════════════════════════════════════
-// generateBulkPDF : A4 — 2 bulletins par page
-// ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// generateBulkPDF — A4 portrait, 2 bulletins par page
+//
+// Layout par page A4 (210mm × 297mm) :
+//   Bulletin 1 : offsetY=0,   hauteur=140mm  → zone 0–140mm
+//   Séparateur : 8mm pointillés              → zone 140–148mm
+//   Bulletin 2 : offsetY=148, hauteur=140mm  → zone 148–288mm
+//   Marge bas  : 9mm restants                → zone 288–297mm
+// ══════════════════════════════════════════════════════════════════════════
 export async function generateBulkPDF(bulletinsList) {
   if (!bulletinsList || bulletinsList.length === 0) return
 
-  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const pageW = 210
-  const halfH = 148.5  // demi-page A4 = A5
+  const pageW       = 210    // largeur A4
+  const bulletinH   = 140    // hauteur de chaque bulletin
+  const separatorH  = 8      // espace de découpe entre les deux bulletins
+  const offset2     = bulletinH + separatorH  // = 148mm → début du 2ème bulletin
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
   bulletinsList.forEach((params, idx) => {
-    const isEven = idx % 2 === 0
+    const positionSurPage = idx % 2  // 0 = haut, 1 = bas
 
-    if (idx > 0 && isEven) doc.addPage()
+    // Nouvelle page pour chaque paire (sauf la toute première)
+    if (idx > 0 && positionSurPage === 0) doc.addPage()
 
-    const offsetY = isEven ? 0 : halfH
+    if (positionSurPage === 0) {
+      // ── Bulletin du HAUT (0 → 140mm) ──
+      dessinerBulletin(doc, params, 0, pageW, bulletinH)
 
-    if (!isEven) {
+    } else {
+      // ── Séparateur de découpe (140mm → 148mm) ──
+      const sepY = bulletinH + separatorH / 2  // centre du séparateur = 144mm
+
+      // Fond légèrement grisé pour la zone de découpe
+      doc.setFillColor(248, 248, 248)
+      doc.rect(0, bulletinH, pageW, separatorH, 'F')
+
+      // Ligne pointillée de découpe
       doc.setDrawColor(180, 180, 180)
-      doc.setLineWidth(0.3)
-      doc.setLineDash([2, 2])
-      doc.line(10, halfH, pageW - 10, halfH)
-      doc.setLineDash([])
-    }
+      doc.setLineWidth(0.4)
+      doc.setLineDash([3, 2], 0)
+      doc.line(5, sepY, pageW - 5, sepY)
+      doc.setLineDash([], 0)
 
-    dessinerBulletin(doc, params, offsetY, pageW, halfH)
+      // Icône ciseaux symbolique (texte ✂)
+      doc.setFontSize(7)
+      doc.setTextColor(160, 160, 160)
+      doc.setFont('helvetica', 'normal')
+      doc.text('✂', 5, sepY + 1.5)
+      doc.text('✂', pageW - 5, sepY + 1.5, { align: 'right' })
+
+      // ── Bulletin du BAS (148mm → 288mm) ──
+      dessinerBulletin(doc, params, offset2, pageW, bulletinH)
+    }
   })
 
-  doc.save(`bulletins_classe_T${bulletinsList[0]?.trimestre || 1}.pdf`)
+  // Nom du fichier avec classe et trimestre
+  const nomClasse = bulletinsList[0]?.classe?.nom?.replace(/\s+/g, '_') || 'classe'
+  const trimestre = bulletinsList[0]?.trimestre || 1
+  doc.save(`bulletins_${nomClasse}_T${trimestre}.pdf`)
 }
 
-// ══════════════════════════════════════════════════════════════════
-// genererBulletin : A4 pleine page (compatibilité existante)
-// ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// genererBulletin — A4 pleine page (compatibilité existante)
+// ══════════════════════════════════════════════════════════════════════════
 export async function genererBulletin(params) {
   const { eleve, trimestre } = params
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })

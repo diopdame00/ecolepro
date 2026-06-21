@@ -160,11 +160,11 @@ export default function NouvelleAnneePage() {
         .eq('statut', 'valide')
 
       // Calculer moy générale par élève par semestre
-      const moyParEleveParSemestre: Record<string, Record<number, number | null>> = {}
+      const moyParEleveParSemestre = {}
       elevesData.forEach(e => { moyParEleveParSemestre[e.id] = { 1: null, 2: null } })
 
       // Grouper les grades par élève et semestre
-      const grouped: Record<string, Record<number, { sum: number, coefs: number }>> = {}
+      const grouped = {}
       gradesData?.forEach(g => {
         const coef = g.subjects?.coefficient || 1
         if (g.moyenne_matiere === null || g.moyenne_matiere === undefined) return

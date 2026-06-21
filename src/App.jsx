@@ -18,6 +18,7 @@ import ElevesPage        from './pages/admin/ElevesPage'
 import NotesValidation   from './pages/admin/NotesValidation'     // ✅ était NotesPage (inexistant)
 import ConfigurationPage from './pages/admin/ConfigurationPage'
 import BulletinsPage     from './pages/admin/BulletinsPage'
+import NouvelleAnneePage from './pages/admin/NouvelleAnneePage'
 
 // Secrétaire
 import SecretaireDashboard from './pages/secretaire/Dashboard'    // ✅ était SecretaireDashboard
@@ -113,6 +114,7 @@ function AppRouter() {
         <Route path="/admin/notes"                  element={<NotesValidation />} />
         <Route path="/admin/bulletins"              element={<BulletinsPage />} />
         <Route path="/admin/configuration"          element={<ConfigurationPage />} />
+        <Route path="/admin/nouvelle-annee"         element={<NouvelleAnneePage />} />
         <Route path="/admin/paiements"              element={<PaiementsPage />} />
         <Route path="/admin/cours"                  element={<CoursValidation />} />
         <Route path="/admin/emploi-du-temps"        element={<EmploiDuTempsAdmin />} />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Select, Badge, EmptyState } from '../../components/ui'
 import { formatNote } from '../../utils/calculs'
@@ -30,6 +31,7 @@ function calculerMoyenne(g) {
 
 export default function ProfNotes() {
   const { profile, schoolId } = useAuth()
+  const { anneeActive } = useAnneeActive()
   const [classes, setClasses]     = useState([])
   const [matieres, setMatieres]   = useState([])
   const [eleves, setEleves]       = useState([])
@@ -45,7 +47,7 @@ export default function ProfNotes() {
   // Colonnes déjà soumises (verrouillées)
   const [colonnesSoumises, setColonnesSoumises] = useState([]) // ex: ['devoir_1']
 
-  useEffect(() => { fetchClasses() }, [])
+  useEffect(() => { if (anneeActive) fetchClasses() }, [anneeActive])
   useEffect(() => { if (selectedClasse) { fetchMatieres(); fetchEleves() } }, [selectedClasse])
   useEffect(() => {
     if (selectedClasse && selectedMatiere) { fetchEleves(); fetchGrades() }
@@ -54,9 +56,13 @@ export default function ProfNotes() {
   async function fetchClasses() {
     const { data } = await supabase
       .from('prof_classes')
-      .select('classes(id, nom)')
+      .select('classes(id, nom, annee_scolaire)')
       .eq('prof_id', profile.id)
-    setClasses(data?.map(d => d.classes).filter(Boolean) || [])
+
+    // Uniquement les classes de l'année active
+    const filtered = (data?.map(d => d.classes).filter(Boolean) || [])
+      .filter(c => !anneeActive || c.annee_scolaire === anneeActive)
+    setClasses(filtered)
   }
 
   async function fetchMatieres() {

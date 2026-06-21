@@ -53,32 +53,53 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // ── 1. Récupérer les classes actuelles ──────────────────────────────
-    const { data: anciennesClasses, error: classesErr } = await supabaseAdmin
+    // ── 1. Récupérer toutes les classes de l'école ─────────────────────
+    const { data: toutesClasses, error: classesErr } = await supabaseAdmin
       .from('classes').select('*').eq('school_id', school_id).order('nom')
     if (classesErr) return json({ error: 'Erreur lecture classes : ' + classesErr.message }, 500)
 
+    // Déterminer l'année active = la plus récente en base
+    const anneesExistantes = [...new Set((toutesClasses || [])
+      .map(c => c.annee_scolaire).filter(Boolean))].sort().reverse()
+    const anneeActive = anneesExistantes[0] || null
+
+    // Garder uniquement les classes de l'année active pour la duplication
+    const anciennesClasses = (toutesClasses || [])
+      .filter(c => c.annee_scolaire === anneeActive)
+
     // ── 2. Vérifier que la nouvelle année n'existe pas déjà ────────────
-    const dejaExiste = anciennesClasses?.some(c => c.annee_scolaire === nouvelle_annee)
+    const dejaExiste = (toutesClasses || []).some(c => c.annee_scolaire === nouvelle_annee)
     if (dejaExiste) return json({ error: `L'année ${nouvelle_annee} existe déjà` }, 400)
 
     // ── 3. Créer les nouvelles classes ─────────────────────────────────
-    // On déduplique par nom (une seule classe par nom pour la nouvelle année)
-    const nomsDejaVus = new Set<string>()
-    const nouvellesClassesInsert = (anciennesClasses || [])
-      .filter(c => {
-        if (nomsDejaVus.has(c.nom)) return false
-        nomsDejaVus.add(c.nom)
-        return true
-      })
-      .map(c => ({
-        nom:               c.nom,
-        school_id:         c.school_id,
+    // On déduplique par nom. On part des classes de l'année active.
+    // On ajoute aussi les noms de classes cibles des décisions qui n'existent pas encore
+    // (ex: "Tle L2 A" si elle n'était pas dans les classes actives)
+    const nomsACreer = new Set<string>()
+    anciennesClasses.forEach(c => nomsACreer.add(c.nom))
+
+    // Ajouter les classes cibles des promotions (niveaux supérieurs)
+    ;(decisions || []).forEach((d: any) => {
+      if (d.action !== 'sortant' && d.nouvelle_classe_nom) {
+        nomsACreer.add(d.nouvelle_classe_nom)
+      }
+    })
+
+    // Construire une map nom → config depuis les classes existantes (pour frais etc.)
+    const configParNom: Record<string, any> = {}
+    anciennesClasses.forEach(c => { configParNom[c.nom] = c })
+
+    const nouvellesClassesInsert = [...nomsACreer].map(nom => {
+      const ref = configParNom[nom] || anciennesClasses[0] // fallback sur première classe
+      return {
+        nom,
+        school_id:         school_id,
         annee_scolaire:    nouvelle_annee,
-        niveau:            c.niveau || null,
-        frais_inscription: c.frais_inscription || null,
-        frais_scolarite:   c.frais_scolarite   || null,
-      }))
+        niveau:            ref?.niveau            || null,
+        frais_inscription: ref?.frais_inscription || null,
+        frais_scolarite:   ref?.frais_scolarite   || null,
+      }
+    })
 
     const { data: nouvellesClasses, error: insertErr } = await supabaseAdmin
       .from('classes').insert(nouvellesClassesInsert).select()
@@ -95,8 +116,8 @@ Deno.serve(async (req) => {
       if (nvId) ancienneVersNouvelle[ac.id] = nvId
     })
 
-    // ── 4. Dupliquer class_subjects ────────────────────────────────────
-    const anciennesClasseIds = (anciennesClasses || []).map(c => c.id)
+    // ── 4. Dupliquer class_subjects depuis l'année active uniquement ───
+    const anciennesClasseIds = anciennesClasses.map(c => c.id)
 
     const { data: anciensCsData } = await supabaseAdmin
       .from('class_subjects').select('*').in('class_id', anciennesClasseIds)

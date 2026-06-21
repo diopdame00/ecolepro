@@ -57,17 +57,15 @@ function calculerMoyenneAnnuelle(moyS1, moyS2) {
 // ── Décision automatique selon la moyenne ────────────────────────────────
 function decisionAuto(moyenne, niveauSup) {
   if (niveauSup === '__sortant__') return 'sortant'
-  if (moyenne === null) return 'borderline' // pas assez de données
+  if (moyenne === null) return 'redouble' // pas de notes → redouble par défaut
   if (moyenne >= 9.5) return 'promo'
-  if (moyenne >= 8)   return 'borderline'
   return 'redouble'
 }
 
 const BADGE = {
-  promo:      { label: '✅ Promu',      bg: 'bg-green-100',  text: 'text-green-800' },
-  redouble:   { label: '🔄 Redouble',  bg: 'bg-orange-100', text: 'text-orange-800' },
-  sortant:    { label: '🎓 Sortant',   bg: 'bg-purple-100', text: 'text-purple-800' },
-  borderline: { label: '⚠️ À décider', bg: 'bg-yellow-100', text: 'text-yellow-800' },
+  promo:    { label: '✅ Promu',     bg: 'bg-green-100',  text: 'text-green-800'  },
+  redouble: { label: '🔄 Redouble', bg: 'bg-orange-100', text: 'text-orange-800' },
+  sortant:  { label: '🎓 Sortant',  bg: 'bg-purple-100', text: 'text-purple-800' },
 }
 
 export default function NouvelleAnneePage() {
@@ -85,12 +83,11 @@ export default function NouvelleAnneePage() {
   const [decisions, setDecisions]     = useState([]) // [{ eleve, moyS1, moyS2, moyAnn, action, nouvelle_classe_nom }]
   const [anneeActuelle, setAnneeActuelle] = useState('')
 
-  // Stats
   const stats = {
-    promus:     decisions.filter(d => d.action === 'promo').length,
+    promus:      decisions.filter(d => d.action === 'promo').length,
     redoublants: decisions.filter(d => d.action === 'redouble').length,
-    sortants:   decisions.filter(d => d.action === 'sortant').length,
-    borderline: decisions.filter(d => d.action === 'borderline').length,
+    sortants:    decisions.filter(d => d.action === 'sortant').length,
+    sansnotes:   decisions.filter(d => d.moyAnn === null && d.action !== 'sortant').length,
   }
 
   // ── Étape 1 → 2 : charger et analyser les élèves ─────────────────────
@@ -232,8 +229,9 @@ export default function NouvelleAnneePage() {
     setDecisions(prev => prev.map((d, i) => {
       if (i !== idx) return d
       let nouvelle_classe_nom = d.nouvelle_classe_nom
-      if (newAction === 'promo' && d.niveauSup && d.niveauSup !== '__sortant__') {
-        nouvelle_classe_nom = d.niveauSup
+      if (newAction === 'promo') {
+        nouvelle_classe_nom = (d.niveauSup && d.niveauSup !== '__sortant__')
+          ? d.niveauSup : d.classeActuelle
       } else if (newAction === 'redouble') {
         nouvelle_classe_nom = d.classeActuelle
       } else if (newAction === 'sortant') {
@@ -379,10 +377,10 @@ export default function NouvelleAnneePage() {
             {/* Stats rapides */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: 'Promus',      val: stats.promus,     color: 'green'  },
+                { label: 'Promus',      val: stats.promus,      color: 'green'  },
                 { label: 'Redoublants', val: stats.redoublants, color: 'orange' },
-                { label: 'Sortants',    val: stats.sortants,   color: 'purple' },
-                { label: 'À décider',   val: stats.borderline, color: 'yellow' },
+                { label: 'Sortants',    val: stats.sortants,    color: 'purple' },
+                { label: 'Sans notes',  val: stats.sansnotes,   color: 'yellow' },
               ].map(s => (
                 <Card key={s.label} className="p-4 text-center">
                   <div className={`text-2xl font-black text-${s.color}-600`}>{s.val}</div>
@@ -392,12 +390,12 @@ export default function NouvelleAnneePage() {
             </div>
 
             {/* Alerte si des cas sont à décider */}
-            {stats.borderline > 0 && (
+            {stats.sansnotes > 0 && (
               <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
                 <AlertTriangle size={18} className="text-yellow-500 shrink-0 mt-0.5" />
                 <div className="text-sm text-yellow-800">
-                  <strong>{stats.borderline} élève(s)</strong> ont une moyenne entre 8 et 9.49 —
-                  une décision manuelle est requise pour chacun.
+                  <strong>{stats.sansnotes} élève(s)</strong> n'ont pas encore de notes validées —
+                  ils redoublent par défaut. Vous pouvez modifier leur décision individuellement.
                 </div>
               </div>
             )}
@@ -425,15 +423,12 @@ export default function NouvelleAnneePage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {decisions.map((d, idx) => {
-                      const badge = BADGE[d.action]
                       const moyColor = d.moyAnn === null ? 'text-gray-400'
                         : d.moyAnn >= 9.5 ? 'text-green-600'
-                        : d.moyAnn >= 8   ? 'text-yellow-600'
                         : 'text-red-500'
 
                       return (
-                        <tr key={d.eleve.id}
-                          className={`hover:bg-gray-50/50 ${d.action === 'borderline' ? 'bg-yellow-50/40' : ''}`}>
+                        <tr key={d.eleve.id} className="hover:bg-gray-50/50">
                           <td className="px-4 py-2.5 font-medium text-gray-900">
                             {d.eleve.prenom} {d.eleve.nom}
                           </td>
@@ -452,16 +447,15 @@ export default function NouvelleAnneePage() {
                               value={d.action}
                               onChange={e => changerDecision(idx, e.target.value)}
                               className={`px-2 py-1 rounded-lg text-xs font-semibold border-0 cursor-pointer
-                                ${badge.bg} ${badge.text} focus:outline-none focus:ring-2 focus:ring-primary-400`}
+                                ${(BADGE[d.action] || BADGE.promo).bg}
+                                ${(BADGE[d.action] || BADGE.promo).text}
+                                focus:outline-none focus:ring-2 focus:ring-primary-400`}
                             >
                               {d.niveauSup && d.niveauSup !== '__sortant__' && (
                                 <option value="promo">✅ Promu</option>
                               )}
                               <option value="redouble">🔄 Redouble</option>
                               <option value="sortant">🎓 Sortant</option>
-                              {d.moyAnn !== null && d.moyAnn >= 8 && d.moyAnn < 9.5 && (
-                                <option value="borderline">⚠️ À décider</option>
-                              )}
                             </select>
                           </td>
                           <td className="px-3 py-2 text-center text-xs text-gray-500 font-mono">
@@ -478,15 +472,13 @@ export default function NouvelleAnneePage() {
             <div className="flex gap-3 justify-end">
               <Button variant="secondary" onClick={() => setEtape(1)}>← Retour</Button>
               <Button
-                disabled={stats.borderline > 0}
-                onClick={() => setEtape(3)}
-                title={stats.borderline > 0 ? 'Résolvez tous les cas "À décider" avant de continuer' : ''}>
+                onClick={() => setEtape(3)}>
                 Continuer → Confirmation
               </Button>
             </div>
             {stats.borderline > 0 && (
               <p className="text-xs text-yellow-700 text-right">
-                Résolvez d'abord les {stats.borderline} cas "À décider" avant de continuer.
+                ⚠️ {stats.borderline} élève(s) sans notes — ils seront traités comme indiqué dans le tableau.
               </p>
             )}
           </div>

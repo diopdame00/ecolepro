@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Modal, Badge, EmptyState } from '../../components/ui'
 import {
@@ -41,6 +42,7 @@ function formatFCFA(v) {
 // ════════════════════════════════════════════════════════════════
 export default function PaiementsPage() {
   const { schoolId } = useAuth()
+  const { anneeActive } = useAnneeActive()
 
   const [paiements, setPaiements] = useState([])
   const [classes, setClasses]     = useState([])
@@ -79,8 +81,8 @@ export default function PaiementsPage() {
   const searchInputRef = useRef(null)
 
   useEffect(() => {
-    if (schoolId) { fetchPaiements(); fetchClasses() }
-  }, [schoolId])
+    if (schoolId && anneeActive) { fetchPaiements(); fetchClasses() }
+  }, [schoolId, anneeActive])
 
   // Focus sur le champ de recherche quand on passe à l'étape 2
   useEffect(() => {
@@ -124,10 +126,12 @@ export default function PaiementsPage() {
   }
 
   async function fetchClasses() {
+    if (!anneeActive) return
     const { data } = await supabase
       .from('classes')
       .select('id, nom, annee_scolaire, frais_scolarite, frais_inscription')
       .eq('school_id', schoolId)
+      .eq('annee_scolaire', anneeActive)   // ← uniquement l'année active
       .order('nom')
     setClasses(data || [])
   }

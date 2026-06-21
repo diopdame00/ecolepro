@@ -8,6 +8,8 @@ import {
   X, ChevronLeft, GraduationCap, Layers, Check
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
+import { SelecteurAnnee, BandeauArchive } from '../../components/shared/SelecteurAnnee'
 
 // ── Niveaux par cycle ────────────────────────────────────────
 const NIVEAUX_PAR_CYCLE = {
@@ -60,6 +62,7 @@ function anneeEnCours() {
 export default function ClassesPage() {
   const { schoolId, school } = useAuth()
   const cycle = school?.type_etablissement || 'college'
+  const { anneeActive, anneesDispos, anneeSelectionnee, setAnneeSelectionnee, enModeArchive } = useAnneeActive()
 
   const [classes, setClasses]         = useState([])
   const [loading, setLoading]         = useState(true)
@@ -78,13 +81,17 @@ export default function ClassesPage() {
   const isLycee = cycle === 'lycee'
   const nomClasse = selectedNiveau ? `${selectedNiveau} ${selectedVariante}` : ''
 
-  useEffect(() => { if (schoolId) fetchClasses() }, [schoolId])
+  useEffect(() => { if (schoolId && anneeActive) fetchClasses() }, [schoolId, anneeActive, anneeSelectionnee])
 
   async function fetchClasses() {
+    // Année à afficher : active par défaut, archive si sélectionnée
+    const annee = anneeSelectionnee ?? anneeActive
+    if (!annee) return
     const { data } = await supabase
       .from('classes')
       .select('*, students(count)')
       .eq('school_id', schoolId)
+      .eq('annee_scolaire', annee)
       .order('nom')
     setClasses(data || [])
     setLoading(false)
@@ -142,16 +149,21 @@ export default function ClassesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Classes</h1>
+            <SelecteurAnnee anneeActive={anneeActive} anneesDispos={anneesDispos} anneeSelectionnee={anneeSelectionnee} setAnneeSelectionnee={setAnneeSelectionnee} className="mt-1" />
             <p className="text-gray-500 text-sm">
               {classes.length} classe(s) · Cycle {CYCLE_LABELS[cycle] || cycle}
             </p>
           </div>
-          <Button onClick={() => ouvrirModal()}>
-            <Plus size={16} /> Nouvelle classe
-          </Button>
+          {!enModeArchive && (
+            <Button onClick={() => ouvrirModal()}>
+              <Plus size={16} /> Nouvelle classe
+            </Button>
+          )}
         </div>
 
         {/* Contenu */}
+        {enModeArchive && <BandeauArchive annee={anneeSelectionnee} onRetour={() => setAnneeSelectionnee(null)} />}
+
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
@@ -205,13 +217,13 @@ export default function ClassesPage() {
                         </div>
                       </Card>
                     ))}
-                  <button
+                  {!enModeArchive && <button
                     onClick={() => ouvrirModal(niveau)}
                     className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-primary-300 hover:text-primary-500 hover:bg-primary-50 transition-all"
                   >
                     <Plus size={20} />
                     <span className="text-xs font-medium">Ajouter {niveau}</span>
-                  </button>
+                  </button>}
                 </div>
               </div>
             ))}

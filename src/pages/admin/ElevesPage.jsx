@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
+import { SelecteurAnnee, BandeauArchive } from '../../components/shared/SelecteurAnnee'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Modal, Badge, EmptyState } from '../../components/ui'
 import ImportSmart from '../../components/shared/ImportSmart'
@@ -32,6 +34,10 @@ const EMPTY_FORM = { prenom: '', nom: '', sexe: 'M', date_naissance: '', classe_
 // ══════════════════════════════════════════════════════════════
 export default function ElevesPage() {
   const { schoolId } = useAuth()
+  const {
+    annee, anneeActive, anneesDispos,
+    anneeSelectionnee, setAnneeSelectionnee, enModeArchive,
+  } = useAnneeActive()
   const [eleves, setEleves]         = useState([])
   const [classes, setClasses]       = useState([])
   const [loading, setLoading]       = useState(true)
@@ -44,20 +50,37 @@ export default function ElevesPage() {
   const [form, setForm]             = useState(EMPTY_FORM)
   const [formErrors, setFormErrors] = useState({})
 
-  useEffect(() => { if (schoolId) { fetchClasses(); fetchEleves() } }, [schoolId])
+  useEffect(() => { if (schoolId && annee) { fetchClasses(); fetchEleves() } }, [schoolId, annee])
 
   async function fetchEleves() {
+    if (!annee) return
+    // Récupérer d'abord les classes de l'année sélectionnée
+    const { data: classesAnnee } = await supabase
+      .from('classes')
+      .select('id')
+      .eq('school_id', schoolId)
+      .eq('annee_scolaire', annee)
+    const classIds = (classesAnnee || []).map(c => c.id)
+    if (classIds.length === 0) { setEleves([]); setLoading(false); return }
+
     const { data } = await supabase
       .from('students')
       .select('*, classes(nom), student_qr_profiles(qr_token, qr_generated_at, activation_required, first_login_at)')
       .eq('school_id', schoolId)
+      .in('classe_id', classIds)
       .order('nom')
     setEleves(data || [])
     setLoading(false)
   }
 
   async function fetchClasses() {
-    const { data } = await supabase.from('classes').select('id, nom').eq('school_id', schoolId).order('nom')
+    if (!annee) return
+    const { data } = await supabase
+      .from('classes')
+      .select('id, nom, annee_scolaire')
+      .eq('school_id', schoolId)
+      .eq('annee_scolaire', annee)
+      .order('nom')
     setClasses(data || [])
   }
 
@@ -150,17 +173,24 @@ export default function ElevesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Élèves</h1>
+            <SelecteurAnnee anneeActive={anneeActive} anneesDispos={anneesDispos} anneeSelectionnee={anneeSelectionnee} setAnneeSelectionnee={setAnneeSelectionnee} className="mt-1" />
             <p className="text-gray-500 text-sm">{eleves.length} élève(s) inscrit(s)</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setImportOpen(true)}>
-              <Upload size={15} /> Importer
-            </Button>
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus size={16} /> Ajouter un élève
-            </Button>
+            {!enModeArchive && (
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                <Upload size={15} /> Importer
+              </Button>
+            )}
+            {!enModeArchive && (
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus size={16} /> Ajouter un élève
+              </Button>
+            )}
           </div>
         </div>
+
+        {enModeArchive && <BandeauArchive annee={annee} onRetour={() => setAnneeSelectionnee(null)} />}
 
         {/* ── Filtres ── */}
         <div className="flex flex-wrap gap-3">
@@ -428,5 +458,3 @@ function QRDisplay({ student, qrToken, qrData, onRegenerate }) {
   )
 }
 
-// Fix missing import
-import { useRef } from 'react'

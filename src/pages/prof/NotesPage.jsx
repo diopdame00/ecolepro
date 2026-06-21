@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useAnneeActive } from '../../hooks/useAnneeActive'
+import { SelecteurAnnee, BandeauArchive } from '../../components/shared/SelecteurAnnee'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Select, Badge, EmptyState } from '../../components/ui'
 import { formatNote } from '../../utils/calculs'
@@ -31,7 +32,7 @@ function calculerMoyenne(g) {
 
 export default function ProfNotes() {
   const { profile, schoolId } = useAuth()
-  const { anneeActive } = useAnneeActive()
+  const { annee, anneeActive, anneesDispos, anneeSelectionnee, setAnneeSelectionnee, enModeArchive } = useAnneeActive()
   const [classes, setClasses]     = useState([])
   const [matieres, setMatieres]   = useState([])
   const [eleves, setEleves]       = useState([])
@@ -43,11 +44,12 @@ export default function ProfNotes() {
   const [saving, setSaving]       = useState(false)
 
   // Colonne active (celle que le prof est en train de saisir)
+  const readOnly = enModeArchive
   const [colonneActive, setColonneActive] = useState('devoir_1')
   // Colonnes déjà soumises (verrouillées)
   const [colonnesSoumises, setColonnesSoumises] = useState([]) // ex: ['devoir_1']
 
-  useEffect(() => { if (anneeActive) fetchClasses() }, [anneeActive])
+  useEffect(() => { if (annee) fetchClasses() }, [annee])
   useEffect(() => { if (selectedClasse) { fetchMatieres(); fetchEleves() } }, [selectedClasse])
   useEffect(() => {
     if (selectedClasse && selectedMatiere) { fetchEleves(); fetchGrades() }
@@ -248,6 +250,8 @@ export default function ProfNotes() {
           <h1 className="text-2xl font-black text-gray-900">Saisie des notes</h1>
           <p className="text-gray-500 text-sm">Sélectionnez une classe, matière et trimestre</p>
         </div>
+
+        {enModeArchive && <BandeauArchive annee={annee} onRetour={() => setAnneeSelectionnee(null)} />}
 
         <Card>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

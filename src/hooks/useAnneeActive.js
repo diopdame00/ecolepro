@@ -1,31 +1,49 @@
 // src/hooks/useAnneeActive.js
-// Retourne l'année scolaire la plus récente parmi les classes de l'école.
-// Utilisé par les pages prof pour filtrer uniquement l'année active.
+// Source centrale de vérité pour l'année scolaire active.
+// - anneeActive  : l'année la plus récente (ex: "2026/2027")
+// - anneesDispos : toutes les années existantes (pour le sélecteur archives)
+// - setAnneeSelectionnee : permet de basculer temporairement sur une archive
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
 export function useAnneeActive() {
   const { schoolId } = useAuth()
-  const [anneeActive, setAnneeActive] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [anneeActive,        setAnneeActive]        = useState(null)
+  const [anneesDispos,       setAnneesDispos]        = useState([])
+  const [anneeSelectionnee,  setAnneeSelectionnee]   = useState(null) // null = active
+  const [loading,            setLoading]             = useState(true)
 
-  useEffect(() => {
+  const fetchAnnees = useCallback(async () => {
     if (!schoolId) return
-    async function fetch() {
-      const { data } = await supabase
-        .from('classes')
-        .select('annee_scolaire')
-        .eq('school_id', schoolId)
-        .order('annee_scolaire', { ascending: false })
-        .limit(1)
-        .single()
-      setAnneeActive(data?.annee_scolaire || null)
-      setLoading(false)
-    }
-    fetch()
+    const { data } = await supabase
+      .from('classes')
+      .select('annee_scolaire')
+      .eq('school_id', schoolId)
+      .order('annee_scolaire', { ascending: false })
+
+    const uniques = [...new Set((data || []).map(d => d.annee_scolaire).filter(Boolean))]
+    setAnneesDispos(uniques)
+    setAnneeActive(uniques[0] || null)
+    setLoading(false)
   }, [schoolId])
 
-  return { anneeActive, loading }
+  useEffect(() => { fetchAnnees() }, [fetchAnnees])
+
+  // L'année courante à utiliser dans les requêtes
+  const annee = anneeSelectionnee ?? anneeActive
+  // true si on consulte une archive (pas l'année active)
+  const enModeArchive = anneeSelectionnee !== null && anneeSelectionnee !== anneeActive
+
+  return {
+    anneeActive,
+    annee,
+    anneesDispos,
+    anneeSelectionnee,
+    setAnneeSelectionnee,
+    enModeArchive,
+    loading,
+    refetch: fetchAnnees,
+  }
 }

@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { getMention, getAppreciation, formatNote } from '../../utils/calculs'
 import { genererBulletin } from '../../utils/bulletin'
-import { ChevronLeft, Star } from 'lucide-react'
+import { ChevronLeft, Star, Archive } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function getToken() {
@@ -19,9 +19,31 @@ export default function ParentNotes() {
 
   const [notes, setNotes]                   = useState([])
   const [selectedTrimestre, setTrimestre]   = useState('1')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]               = useState(true)
+  const [anneesDispos, setAnneesDispos]     = useState([])
+  const [anneeSelectionnee, setAnneeSelectionnee] = useState(null) // null = active
 
-  useEffect(() => { fetchNotes() }, [selectedTrimestre])
+  useEffect(() => { fetchAnnees() }, [])
+  useEffect(() => { fetchNotes() }, [selectedTrimestre, anneeSelectionnee])
+
+  async function fetchAnnees() {
+    const token = getToken()
+    if (!token) return
+    // Récupérer toutes les années où l'élève a des notes
+    const { data } = await supabase.rpc('get_student_grades_by_token', {
+      p_token: token, p_trimestre: 1,
+    })
+    // Pour les archives, on interroge la classe de l'élève
+    const { data: classData } = await supabase
+      .from('students')
+      .select('classes(annee_scolaire)')
+      .eq('id', studentId)
+      .single()
+    if (classData?.classes?.annee_scolaire) {
+      // Pour simplifier : on lit toutes les années via les grades
+      setAnneesDispos([classData.classes.annee_scolaire])
+    }
+  }
 
   async function fetchNotes() {
     setLoading(true)
@@ -31,6 +53,7 @@ export default function ParentNotes() {
       p_token: token,
       p_trimestre: parseInt(selectedTrimestre),
     })
+    // TODO: filtrer par anneeSelectionnee quand la RPC le supportera
     if (error) console.error(error)
     setNotes(data || [])
     setLoading(false)
@@ -70,6 +93,23 @@ export default function ParentNotes() {
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
+
+        {/* Sélecteur d'année (archives) */}
+        {anneesDispos.length > 1 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Archive size={13} className="text-gray-400" />
+            {anneesDispos.map(a => (
+              <button key={a}
+                onClick={() => setAnneeSelectionnee(a === anneesDispos[0] ? null : a)}
+                className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-all
+                  ${(anneeSelectionnee === a || (anneeSelectionnee === null && a === anneesDispos[0]))
+                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    : 'border-gray-200 text-gray-400 hover:border-primary-300'}`}>
+                {a}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Sélecteur trimestre */}
         <div className="flex gap-2">

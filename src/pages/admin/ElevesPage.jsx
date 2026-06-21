@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
+import { SelecteurAnnee, BandeauArchive } from '../../components/shared/SelecteurAnnee'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Modal, Badge, EmptyState } from '../../components/ui'
 import ImportSmart from '../../components/shared/ImportSmart'
@@ -150,6 +152,7 @@ export default function ElevesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Élèves</h1>
+            <SelecteurAnnee anneeActive={anneeActive} anneesDispos={anneesDispos} anneeSelectionnee={anneeSelectionnee} setAnneeSelectionnee={setAnneeSelectionnee} className="mt-1" />
             <p className="text-gray-500 text-sm">{eleves.length} élève(s) inscrit(s)</p>
           </div>
           <div className="flex gap-2">

@@ -3,14 +3,17 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Badge, EmptyState } from '../../components/ui'
-import { BookOpen, Users } from 'lucide-react'
+import { BookOpen, Users, Archive } from 'lucide-react'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
+import { SelecteurAnnee, BandeauArchive } from '../../components/shared/SelecteurAnnee'
 
 export default function ProfClasses() {
   const { profile } = useAuth()
+  const { annee, anneeActive, anneesDispos, anneeSelectionnee, setAnneeSelectionnee, enModeArchive } = useAnneeActive()
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if (profile) fetchClasses() }, [profile])
+  useEffect(() => { if (profile && annee) fetchClasses() }, [profile, annee])
 
   async function fetchClasses() {
     // 1. Récupérer les affectations prof avec classes et matières
@@ -42,7 +45,9 @@ export default function ProfClasses() {
       }
     })
 
-    setClasses(merged)
+    // Filtrer uniquement l'année sélectionnée
+    const filtered = annee ? merged.filter(a => a.classes?.annee_scolaire === annee) : merged
+    setClasses(filtered)
     setLoading(false)
   }
 
@@ -52,7 +57,10 @@ export default function ProfClasses() {
         <div>
           <h1 className="text-2xl font-black text-gray-900">Mes classes</h1>
           <p className="text-gray-500 text-sm">{classes.length} affectation(s)</p>
+          <SelecteurAnnee anneeActive={anneeActive} anneesDispos={anneesDispos} anneeSelectionnee={anneeSelectionnee} setAnneeSelectionnee={setAnneeSelectionnee} className="mt-2" />
         </div>
+
+        {enModeArchive && <BandeauArchive annee={annee} onRetour={() => setAnneeSelectionnee(null)} />}
 
         {loading ? (
           <div className="flex justify-center py-16">

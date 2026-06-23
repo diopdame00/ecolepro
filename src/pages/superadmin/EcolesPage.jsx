@@ -146,7 +146,7 @@ export default function EcolesPage() {
           school_name:        schoolName,
           director_name:      directorName,
           director_email:     directorEmail,
-          temp_password:      result.temp_password,
+          temp_password:      result.admin_temp_code,
           expires_at:         result.expires_at,
           type_etablissement: typeEtablissement,
         })
@@ -220,7 +220,10 @@ export default function EcolesPage() {
       )
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Erreur')
-      setRegenResult(result)
+      setRegenResult({
+        temp_password: result.admin_temp_code,
+        expires_at:    result.expires_at,
+      })
       toast.success('Nouveau code généré !')
       fetchEcoles()
     } catch (err) {

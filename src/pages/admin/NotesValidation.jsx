@@ -1,96 +1,71 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Badge, EmptyState } from '../../components/ui'
 import { CheckCircle, XCircle, Clock, Filter } from 'lucide-react'
 import { formatNote } from '../../utils/calculs'
 import toast from 'react-hot-toast'
 
-const COLONNES = [
-  { field: 'devoir_1',    statutField: 'devoir_1_statut',    label: 'Devoir 1' },
-  { field: 'devoir_2',    statutField: 'devoir_2_statut',    label: 'Devoir 2' },
-  { field: 'devoir_3',    statutField: 'devoir_3_statut',    label: 'Devoir 3' },
-  { field: 'composition', statutField: 'composition_statut', label: 'Composition' },
-]
-
 export default function NotesValidation() {
   const { schoolId } = useAuth()
-  const [allGrades, setAllGrades] = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [filter, setFilter]       = useState('soumis')
+  const { yearId, annee } = useAnneeActive()
+  const [grades, setGrades] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter]  = useState('soumis')
 
-  useEffect(() => { if (schoolId) fetchGrades() }, [schoolId])
+  useEffect(() => {
+    if (schoolId && yearId) fetchGrades()
+  }, [schoolId, yearId, filter])
 
   async function fetchGrades() {
     setLoading(true)
     const { data, error } = await supabase
       .from('grades')
-      .select('*, students(prenom, nom, classes(nom)), subjects(nom, coefficient)')
+      .select(`
+        id, statut, trimestre,
+        devoir_1, devoir_2, devoir_3, composition, moyenne_matiere,
+        enrollments(
+          students(prenom, nom),
+          classes(nom)
+        ),
+        subjects(nom, coefficient)
+      `)
       .eq('school_id', schoolId)
+      .eq('year_id', yearId)
+      .eq('statut', filter)
       .order('updated_at', { ascending: false })
-    if (error) {
-      console.error('fetchGrades error:', error)
-      toast.error('Erreur de chargement : ' + error.message)
-    }
-    setAllGrades(data || [])
+
+    if (error) toast.error('Erreur chargement : ' + error.message)
+    setGrades(data || [])
     setLoading(false)
   }
 
-  // Construit une ligne par (note × colonne soumise/validée/brouillon selon le filtre)
-  const entries = []
-  allGrades.forEach(g => {
-    COLONNES.forEach(col => {
-      const valeur = g[col.field]
-      const statutCol = g[col.statutField] || 'brouillon'
-      if (valeur === null || valeur === undefined) return // rien saisi, on ignore
-      if (statutCol !== filter) return
-      entries.push({
-        gradeId:      g.id,
-        colField:     col.field,
-        statutField:  col.statutField,
-        colLabel:     col.label,
-        valeur,
-        eleve:        g.students,
-        matiere:      g.subjects,
-        trimestre:    g.trimestre,
-      })
-    })
-  })
-
-  async function validerColonne(gradeId, statutField) {
-    // Mettre à jour la colonne spécifique
+  async function validerNote(gradeId) {
     const { error } = await supabase
       .from('grades')
-      .update({ [statutField]: 'valide' })
+      .update({ statut: 'valide' })
       .eq('id', gradeId)
     if (error) { toast.error('Erreur'); return }
 
-    // Vérifier si toutes les colonnes saisies sont maintenant validées
-    // pour mettre à jour le statut global
-    const grade = allGrades.find(g => g.id === gradeId)
+    // Calculer rangs après validation
+    const grade = grades.find(g => g.id === gradeId)
     if (grade) {
-      const updatedGrade = { ...grade, [statutField]: 'valide' }
-      const toutValide = COLONNES.every(col => {
-        const valeur = updatedGrade[col.field]
-        const statut = updatedGrade[col.statutField]
-        // Si pas de valeur saisie, on ignore cette colonne
-        if (valeur === null || valeur === undefined) return true
-        return statut === 'valide'
+      await supabase.rpc('calculer_rangs_classe', {
+        p_class_id:  grade.enrollments?.classes?.id || grade.class_id,
+        p_trimestre: grade.trimestre,
       })
-      if (toutValide) {
-        await supabase.from('grades').update({ statut: 'valide' }).eq('id', gradeId)
-      }
     }
 
     toast.success('Note validée !')
     fetchGrades()
   }
 
-  async function rejeterColonne(gradeId, statutField) {
+  async function rejeterNote(gradeId) {
     const { error } = await supabase
       .from('grades')
-      .update({ [statutField]: 'brouillon', statut: 'brouillon' })
+      .update({ statut: 'brouillon' })
       .eq('id', gradeId)
     if (error) { toast.error('Erreur'); return }
     toast.success('Renvoyé au professeur')
@@ -98,115 +73,114 @@ export default function NotesValidation() {
   }
 
   async function validerTout() {
-    const updatesParGrade = {}
-    entries.forEach(e => {
-      if (!updatesParGrade[e.gradeId]) updatesParGrade[e.gradeId] = {}
-      updatesParGrade[e.gradeId][e.statutField] = 'valide'
-    })
-
-    // Ajouter statut global 'valide' pour chaque grade
-    Object.keys(updatesParGrade).forEach(id => {
-      updatesParGrade[id].statut = 'valide'
-    })
-
-    const promises = Object.entries(updatesParGrade).map(([id, fields]) =>
-      supabase.from('grades').update(fields).eq('id', id)
-    )
-    const results = await Promise.all(promises)
-    if (results.some(r => r.error)) { toast.error('Erreur lors de la validation'); return }
-    toast.success(`${entries.length} note(s) validée(s) !`)
+    if (!grades.length) return
+    const ids = grades.map(g => g.id)
+    const { error } = await supabase
+      .from('grades')
+      .update({ statut: 'valide' })
+      .in('id', ids)
+    if (error) { toast.error('Erreur'); return }
+    toast.success(`${ids.length} note(s) validée(s) !`)
     fetchGrades()
   }
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Validation des notes</h1>
-            <p className="text-gray-500 text-sm">{entries.length} entrée(s)</p>
+            <p className="text-gray-500 text-sm">{annee}</p>
           </div>
-          {filter === 'soumis' && entries.length > 0 && (
+          {filter === 'soumis' && grades.length > 0 && (
             <Button onClick={validerTout}>
-              <CheckCircle size={16} />
-              Tout valider
+              <CheckCircle size={16} /> Tout valider ({grades.length})
             </Button>
           )}
         </div>
 
-        {/* Filtres */}
-        <div className="flex bg-white rounded-xl border border-gray-100 p-1 shadow-sm w-fit gap-1">
-          {[
-            { key: 'soumis', label: 'En attente', color: 'text-yellow-600' },
-            { key: 'valide', label: 'Validées', color: 'text-green-600' },
-            { key: 'brouillon', label: 'Brouillons', color: 'text-gray-500' },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all
-                ${filter === key ? 'bg-primary-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Filtre */}
+        <Card className="p-3">
+          <div className="flex gap-2">
+            {[
+              { value: 'soumis',  label: 'En attente' },
+              { value: 'valide',  label: 'Validées' },
+              { value: 'brouillon', label: 'Brouillons' },
+            ].map(({ value, label }) => (
+              <button key={value} onClick={() => setFilter(value)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all
+                  ${filter === value
+                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </Card>
 
         <Card className="p-0 overflow-hidden">
           {loading ? (
-            <div className="flex justify-center py-16">
+            <div className="flex justify-center py-12">
               <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : entries.length === 0 ? (
-            <EmptyState
-              icon={Clock}
-              title="Aucune note dans cette catégorie"
-              description="Les notes soumises par les professeurs apparaîtront ici"
-            />
+          ) : grades.length === 0 ? (
+            <EmptyState icon={CheckCircle}
+              title="Aucune note"
+              description={`Aucune note en statut "${filter}" pour cette année`} />
           ) : (
-            <>
-              <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 grid grid-cols-6 gap-3 text-xs font-bold text-gray-500 uppercase tracking-wide">
-                <span className="col-span-2">Élève</span>
-                <span>Matière</span>
-                <span>Devoir</span>
-                <span>Note</span>
-                <span>Actions</span>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {entries.map((e, i) => (
-                  <div key={`${e.gradeId}-${e.colField}-${i}`} className="px-6 py-3 grid grid-cols-6 gap-3 items-center hover:bg-gray-50/50 text-sm">
-                    <div className="col-span-2 font-medium text-gray-900">
-                      {e.eleve?.prenom} {e.eleve?.nom}
-                      <div className="text-xs text-gray-400 font-normal">{e.matiere?.nom}</div>
+            <div className="divide-y divide-gray-50">
+              {grades.map(g => (
+                <div key={g.id} className="px-5 py-4 flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {g.enrollments?.students?.prenom} {g.enrollments?.students?.nom}
+                      </p>
+                      <Badge color="blue" className="text-xs">
+                        {g.enrollments?.classes?.nom}
+                      </Badge>
+                      <Badge color="gray" className="text-xs">T{g.trimestre}</Badge>
                     </div>
-                    <span className="text-gray-600">{e.matiere?.nom}</span>
-                    <span>
-                      <Badge color="blue">{e.colLabel} · T{e.trimestre}</Badge>
-                    </span>
-                    <span className={`font-bold ${e.valeur >= 10 ? 'text-green-600' : 'text-red-500'}`}>
-                      {formatNote(e.valeur)}
-                    </span>
-                    <div className="flex gap-2">
-                      {filter === 'soumis' && (
-                        <>
-                          <button onClick={() => validerColonne(e.gradeId, e.statutField)} className="p-1.5 hover:bg-green-50 rounded-lg text-green-500 transition-colors" title="Valider">
-                            <CheckCircle size={16} />
-                          </button>
-                          <button onClick={() => rejeterColonne(e.gradeId, e.statutField)} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400 transition-colors" title="Renvoyer">
-                            <XCircle size={16} />
-                          </button>
-                        </>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {g.subjects?.nom}
+                      {g.moyenne_matiere !== null &&
+                        ` · Moy : ${formatNote(g.moyenne_matiere)}/20`}
+                    </p>
+                    <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
+                      {[g.devoir_1, g.devoir_2, g.devoir_3].map((v, i) =>
+                        v != null && (
+                          <span key={i} className="bg-gray-100 px-1.5 py-0.5 rounded">
+                            D{i+1}: {formatNote(v)}
+                          </span>
+                        )
                       )}
-                      {filter !== 'soumis' && (
-                        <Badge color={filter === 'valide' ? 'green' : 'gray'}>
-                          {filter === 'valide' ? 'Validé' : 'Brouillon'}
-                        </Badge>
+                      {g.composition != null && (
+                        <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                          Comp: {formatNote(g.composition)}
+                        </span>
                       )}
                     </div>
                   </div>
-                ))}
-              </div>
-            </>
+                  {filter === 'soumis' && (
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => rejeterNote(g.id)}
+                        className="p-2 hover:bg-red-50 rounded-lg text-gray-300 hover:text-red-400 transition-colors">
+                        <XCircle size={18} />
+                      </button>
+                      <button onClick={() => validerNote(g.id)}
+                        className="p-2 hover:bg-green-50 rounded-lg text-gray-300 hover:text-green-500 transition-colors">
+                        <CheckCircle size={18} />
+                      </button>
+                    </div>
+                  )}
+                  {filter === 'valide' && (
+                    <span className="text-xs bg-green-100 text-green-700 font-semibold px-2 py-1 rounded-full">
+                      Validée
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </Card>
       </div>

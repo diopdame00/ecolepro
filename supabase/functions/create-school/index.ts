@@ -1,153 +1,156 @@
 // ============================================================
-// Supabase Edge Function : create-school (v2)
-// Génère un code temporaire unique + type établissement
-// Déployer avec : supabase functions deploy create-school
+// Edge Function : create-school v2.0
+// Crée une école + année académique + admin + classes pré-config
+// Deploy : supabase functions deploy create-school
 // ============================================================
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-function json(data, status = 200) {
+function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 }
 
-// Génère un mot de passe provisoire lisible : EP-XXXX-XXXX
-// C'est le seul code communiqué à l'admin pour sa première connexion
-function generateTempPassword() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // sans O/0/I/1 pour lisibilité
-  const rand = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-  return `EP-${rand(4)}-${rand(4)}`
+function generateTempCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const rand  = (n: number) =>
+    Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+  return `ECO-${rand(4)}-${rand(4)}`
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
+    // ── Vérifier superadmin ──────────────────────────────────
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) return json({ error: 'Authentification requise' }, 401)
 
     const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL'),
-      Deno.env.get('SUPABASE_ANON_KEY'),
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } }
     )
 
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
     if (authError || !user) return json({ error: 'Non authentifié' }, 401)
 
-    const { data: profile } = await supabaseAuth.from('users').select('role').eq('id', user.id).single()
+    const { data: profile } = await supabaseAuth
+      .from('users').select('role').eq('id', user.id).single()
     if (profile?.role !== 'superadmin') return json({ error: 'Accès réservé au Super Admin' }, 403)
 
+    // ── Paramètres ───────────────────────────────────────────
     const {
-      name, director_name, director_email, phone,
-      subscription_plan, max_students,
-      ia, ief,
+      name,
+      director_name,
+      director_email,
+      phone,
+      ia,
+      ief,
       type_etablissement = 'college',
+      subscription_plan  = 'starter',
+      max_students       = 100,
     } = await req.json()
 
     if (!name || !director_email || !director_name) {
-      return json({ error: 'Champs obligatoires manquants' }, 400)
+      return json({ error: 'Champs obligatoires : name, director_name, director_email' }, 400)
     }
 
     const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL'),
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // Générer uniquement le mot de passe provisoire (= seul code donné à l'admin)
-    const tempPassword = generateTempPassword()
-    const codeExpiry   = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24h
+    // ── Générer le code temporaire ───────────────────────────
+    // adminTempCode = MOT DE PASSE provisoire dans auth.users
+    // = même valeur dans users.temp_code pour cohérence totale
+    const adminTempCode = generateTempCode()
+    const codeExpiry    = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
-    // 1. Créer l'école
-    const { data: school, error: schoolError } = await supabaseAdmin
-      .from('schools')
-      .insert({
-        name,
-        ia:   ia   || null,
-        ief:  ief  || null,
-        director_name,
-        director_email,
-        phone,
-        subscription_plan:       'starter',
-        max_students:            999999,   // illimité
-        is_active:               true,
-        type_etablissement,
-        onboarding_completed:    false,
-        subscription_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      })
-      .select()
-      .single()
+    // ── 1. Créer école + année académique + classes via SQL ──
+    const { data: schoolData, error: schoolErr } = await supabaseAdmin.rpc(
+      'create_school_with_year',
+      {
+        p_name:           name,
+        p_director_name:  director_name,
+        p_director_email: director_email,
+        p_phone:          phone || null,
+        p_ia:             ia    || null,
+        p_ief:            ief   || null,
+        p_type:           type_etablissement,
+        p_plan:           subscription_plan,
+        p_max_students:   max_students,
+      }
+    )
 
-    if (schoolError) return json({ error: `Erreur création école: ${schoolError.message} (code: ${schoolError.code})` }, 500)
+    if (schoolErr) {
+      return json({ error: `Erreur création école : ${schoolErr.message}` }, 500)
+    }
 
-    // 2. Créer le compte admin avec mdp temporaire + flag force-change
+    const schoolId = schoolData.school_id
+    const yearId   = schoolData.year_id
+    const annee    = schoolData.annee
+
+    // ── 2. Mettre à jour codes temporaires sur l'école ──────
+    await supabaseAdmin.from('schools').update({
+      temp_code:               adminTempCode,
+      temp_code_expires_at:    codeExpiry,
+      temp_code_used:          false,
+      onboarding_completed:    false,
+      subscription_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    }).eq('id', schoolId)
+
+    // ── 3. Créer le compte auth admin ────────────────────────
     const { data: authUser, error: authCreateError } = await supabaseAdmin.auth.admin.createUser({
-      email:             director_email,
-      password:          tempPassword,
-      email_confirm:     true,
-      user_metadata:     { prenom: director_name, role: 'admin' },
+      email:         director_email,
+      password:      adminTempCode,  // code = mot de passe provisoire
+      email_confirm: true,
+      user_metadata: { prenom: director_name, role: 'admin' },
     })
 
     if (authCreateError) {
-      await supabaseAdmin.from('schools').delete().eq('id', school.id)
-      return json({ error: authCreateError.message }, 500)
+      await supabaseAdmin.from('schools').delete().eq('id', schoolId)
+      return json({ error: `Erreur création compte : ${authCreateError.message}` }, 500)
     }
 
-    // 3. Créer le profil utilisateur admin
+    // ── 4. Créer le profil utilisateur admin ─────────────────
     const { error: profileError } = await supabaseAdmin.from('users').insert({
       id:                   authUser.user.id,
       prenom:               director_name,
       nom:                  '',
       email:                director_email,
       role:                 'admin',
-      school_id:            school.id,
+      school_id:            schoolId,
       must_change_password: true,
+      temp_code:            adminTempCode,
+      temp_code_expires_at: codeExpiry,
     })
 
     if (profileError) {
       await supabaseAdmin.auth.admin.deleteUser(authUser.user.id)
-      await supabaseAdmin.from('schools').delete().eq('id', school.id)
-      return json({ error: profileError.message }, 500)
-    }
-
-    // 4. Pré-configurer les niveaux selon le type établissement
-    const { data: presets } = await supabaseAdmin
-      .from('niveau_presets')
-      .select('nom, ordre')
-      .eq('type_etablissement', type_etablissement)
-      .order('ordre')
-
-    if (presets && presets.length > 0) {
-      const currentYear = new Date().getFullYear()
-      const annee = `${currentYear}/${currentYear + 1}`
-      
-      await supabaseAdmin.from('classes').insert(
-        presets.map(p => ({
-          nom:           p.nom,
-          school_id:     school.id,
-          annee_scolaire: annee,
-          niveau:        p.nom,
-        }))
-      )
+      await supabaseAdmin.from('schools').delete().eq('id', schoolId)
+      return json({ error: `Erreur profil admin : ${profileError.message}` }, 500)
     }
 
     return json({
-      success:       true,
-      school_id:     school.id,
-      temp_password: tempPassword,  // seul code à communiquer à l'admin
-      expires_at:    codeExpiry,
-      message:       'École créée. Communiquez le mot de passe provisoire à l\'administrateur.',
+      success:         true,
+      school_id:       schoolId,
+      year_id:         yearId,
+      annee_scolaire:  annee,
+      admin_temp_code: adminTempCode,
+      expires_at:      codeExpiry,
+      message:         `École créée. Admin : ${director_email} / Code : ${adminTempCode}`,
     })
 
   } catch (err) {
-    return json({ error: err.message }, 500)
+    return json({ error: (err as Error).message }, 500)
   }
 })

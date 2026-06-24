@@ -4,12 +4,15 @@ import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Modal, Input, Badge, EmptyState } from '../../components/ui'
 import { CalendarDays, Plus, Trash2, MapPin } from 'lucide-react'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
+import { SelecteurAnnee, BandeauArchive } from '../../components/shared/SelecteurAnnee'
 import toast from 'react-hot-toast'
 
 const JOURS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
 
 export default function EmploiDuTempsAdmin() {
   const { schoolId } = useAuth()
+  const { annee, anneeActive, anneesDispos, anneeSelectionnee, setAnneeSelectionnee, enModeArchive } = useAnneeActive()
   const [slots, setSlots] = useState([])
   const [classes, setClasses] = useState([])
   const [subjects, setSubjects] = useState([])
@@ -25,8 +28,8 @@ export default function EmploiDuTempsAdmin() {
   })
 
   useEffect(() => {
-    if (schoolId) fetchAll()
-  }, [schoolId])
+    if (schoolId && annee) fetchAll()
+  }, [schoolId, annee])
 
   async function fetchAll() {
     setLoading(true)
@@ -52,7 +55,8 @@ export default function EmploiDuTempsAdmin() {
   }
 
   async function fetchClasses() {
-    const { data } = await supabase.from('classes').select('id, nom').eq('school_id', schoolId).order('nom')
+    if (!annee) return
+    const { data } = await supabase.from('classes').select('id, nom, annee_scolaire').eq('school_id', schoolId).eq('annee_scolaire', annee).order('nom')
     setClasses(data || [])
     if (data?.length && !selectedClasse) setSelectedClasse(data[0].id)
   }
@@ -124,11 +128,15 @@ export default function EmploiDuTempsAdmin() {
             <h1 className="text-2xl font-black text-gray-900">Emploi du temps</h1>
             <p className="text-gray-500 text-sm mt-0.5">Gérer les créneaux par classe</p>
           </div>
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus size={16} />
-            Ajouter un créneau
-          </Button>
+          {!enModeArchive && (
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus size={16} />
+              Ajouter un créneau
+            </Button>
+          )}
         </div>
+
+        {enModeArchive && <BandeauArchive annee={annee} onRetour={() => setAnneeSelectionnee(null)} />}
 
         {/* Sélecteur de classe */}
         <Card className="p-4">

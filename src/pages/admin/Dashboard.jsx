@@ -1,268 +1,142 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card } from '../../components/ui'
-import { Users, BookOpen, FileText, GraduationCap, CheckCircle, Clock, AlertCircle, XCircle, Bell } from 'lucide-react'
+import { Users, BookOpen, GraduationCap, CheckCircle, Clock, Bell } from 'lucide-react'
 
 export default function AdminDashboard() {
   const { schoolId, school } = useAuth()
-  const [stats, setStats] = useState({ eleves: 0, classes: 0, profs: 0, notesEnAttente: 0 })
+  const { yearId, annee } = useAnneeActive()
+  const [stats, setStats]           = useState({ eleves: 0, classes: 0, profs: 0, notesEnAttente: 0 })
   const [gradeNotifs, setGradeNotifs] = useState([])
-  const [absenceNotifs, setAbsenceNotifs] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]       = useState(true)
 
   useEffect(() => {
-    if (schoolId) {
-      fetchStats()
-      fetchAbsenceNotifs()
-    }
-  }, [schoolId])
-
-  const COLS = [
-    { field: 'devoir_1_statut',    colonne: 'devoir_1',    label: 'Devoir 1' },
-    { field: 'devoir_2_statut',    colonne: 'devoir_2',    label: 'Devoir 2' },
-    { field: 'devoir_3_statut',    colonne: 'devoir_3',    label: 'Devoir 3' },
-    { field: 'composition_statut', colonne: 'composition', label: 'Composition' },
-  ]
+    if (schoolId && yearId) fetchStats()
+  }, [schoolId, yearId])
 
   async function fetchStats() {
-    const [elevesRes, classesRes, profsRes, gradesRes, seenRes] = await Promise.all([
-      supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
-      supabase.from('classes').select('id', { count: 'exact' }).eq('school_id', schoolId),
-      supabase.from('users').select('id', { count: 'exact' }).eq('school_id', schoolId).eq('role', 'prof'),
+    const [elevesRes, classesRes, profsRes, gradesRes] = await Promise.all([
+      // Élèves = enrollments de l'année active
+      supabase.from('enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', schoolId)
+        .eq('year_id', yearId),
+      // Classes de l'année active
+      supabase.from('classes')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', schoolId)
+        .eq('year_id', yearId),
+      // Profs
+      supabase.from('users')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', schoolId)
+        .eq('role', 'prof'),
+      // Notes soumises en attente
       supabase.from('grades')
-        .select('id, devoir_1_statut, devoir_2_statut, devoir_3_statut, composition_statut, students(prenom, nom), subjects(nom)')
-        .eq('school_id', schoolId),
-      supabase.from('grade_notif_seen').select('grade_id, colonne').eq('school_id', schoolId),
+        .select('id, statut, enrollment_id, subject_id, trimestre, enrollments(students(prenom, nom)), subjects(nom)')
+        .eq('school_id', schoolId)
+        .eq('year_id', yearId)
+        .eq('statut', 'soumis'),
     ])
 
-    const seenSet = new Set((seenRes.data || []).map(s => `${s.grade_id}__${s.colonne}`))
-
-    // Construire la liste des notifications non lues
-    const notifs = []
-    ;(gradesRes.data || []).forEach(g => {
-      COLS.forEach(col => {
-        if (g[col.field] === 'soumis' && !seenSet.has(`${g.id}__${col.colonne}`)) {
-          notifs.push({
-            gradeId: g.id,
-            colonne: col.colonne,
-            label:   col.label,
-            eleve:   g.students,
-            matiere: g.subjects?.nom,
-          })
-        }
-      })
-    })
+    const notifs = (gradesRes.data || []).map(g => ({
+      gradeId: g.id,
+      eleve:   g.enrollments?.students,
+      matiere: g.subjects?.nom,
+      trimestre: g.trimestre,
+    }))
 
     setGradeNotifs(notifs)
     setStats({
-      eleves: elevesRes.count || 0,
-      classes: classesRes.count || 0,
-      profs: profsRes.count || 0,
-      notesEnAttente: notifs.length,
+      eleves:          elevesRes.count  || 0,
+      classes:         classesRes.count || 0,
+      profs:           profsRes.count   || 0,
+      notesEnAttente:  notifs.length,
     })
     setLoading(false)
   }
 
-  async function marquerNoteLue(gradeId, colonne) {
-    await supabase.from('grade_notif_seen').insert({ grade_id: gradeId, colonne, school_id: schoolId })
-    setGradeNotifs(prev => prev.filter(n => !(n.gradeId === gradeId && n.colonne === colonne)))
-    setStats(prev => ({ ...prev, notesEnAttente: prev.notesEnAttente - 1 }))
-  }
-
-  async function marquerToutesNotesLues() {
-    const rows = gradeNotifs.map(n => ({ grade_id: n.gradeId, colonne: n.colonne, school_id: schoolId }))
-    if (rows.length === 0) return
-    await supabase.from('grade_notif_seen').insert(rows)
-    setGradeNotifs([])
-    setStats(prev => ({ ...prev, notesEnAttente: 0 }))
-  }
-
-  async function fetchAbsenceNotifs() {
-    const { data } = await supabase
-      .from('absence_notifications')
-      .select('*')
-      .eq('school_id', schoolId)
-      .eq('is_read', false)
-      .order('created_at', { ascending: false })
-      .limit(10)
-    setAbsenceNotifs(data || [])
-  }
-
-  async function markAbsenceRead(id) {
-    await supabase
-      .from('absence_notifications')
-      .update({ is_read: true, read_at: new Date().toISOString() })
-      .eq('id', id)
-    setAbsenceNotifs(prev => prev.filter(n => n.id !== id))
-  }
-
-  async function markAllAbsencesRead() {
-    const ids = absenceNotifs.map(n => n.id)
-    await supabase
-      .from('absence_notifications')
-      .update({ is_read: true, read_at: new Date().toISOString() })
-      .in('id', ids)
-    setAbsenceNotifs([])
-  }
-
-  const cards = [
-    { label: 'Élèves inscrits', value: stats.eleves, icon: Users, color: 'blue', bg: 'bg-blue-100', text: 'text-blue-600' },
-    { label: 'Classes', value: stats.classes, icon: BookOpen, color: 'purple', bg: 'bg-purple-100', text: 'text-purple-600' },
-    { label: 'Professeurs', value: stats.profs, icon: GraduationCap, color: 'green', bg: 'bg-green-100', text: 'text-green-600' },
-    { label: 'Notes à valider', value: stats.notesEnAttente, icon: Clock, color: stats.notesEnAttente > 0 ? 'yellow' : 'gray', bg: stats.notesEnAttente > 0 ? 'bg-yellow-100' : 'bg-gray-100', text: stats.notesEnAttente > 0 ? 'text-yellow-600' : 'text-gray-400' },
-  ]
-
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div>
-          <h1 className="text-2xl font-black text-gray-900">
-            Bonjour 👋
-          </h1>
-          <p className="text-gray-500 text-sm mt-0.5">{school?.name} — Vue d'ensemble</p>
+          <h1 className="text-2xl font-black text-gray-900">Tableau de bord</h1>
+          <p className="text-gray-500 text-sm">{school?.name} · {annee}</p>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {cards.map(({ label, value, icon: Icon, bg, text }) => (
-            <Card key={label} className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-                  <p className="text-3xl font-black text-gray-900 mt-1">{loading ? '—' : value}</p>
-                </div>
-                <div className={`w-10 h-10 ${bg} rounded-xl flex items-center justify-center`}>
-                  <Icon size={20} className={text} />
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* ── Bandeau absences professeurs ── */}
-        {absenceNotifs.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-red-100 border-b border-red-200">
-              <div className="flex items-center gap-2">
-                <Bell size={16} className="text-red-600 shrink-0" />
-                <p className="text-sm font-bold text-red-800">
-                  {absenceNotifs.length} absence(s) déclarée(s) non lue(s)
-                </p>
-              </div>
-              <button
-                onClick={markAllAbsencesRead}
-                className="text-xs text-red-600 font-semibold hover:text-red-800 transition-colors"
-              >
-                Tout marquer lu
-              </button>
-            </div>
-            <div className="divide-y divide-red-100">
-              {absenceNotifs.map(n => {
-                const isToday = n.date_cours === new Date().toISOString().slice(0, 10)
-                const isFuture = n.date_cours > new Date().toISOString().slice(0, 10)
-                const dateLabel = isToday ? "Aujourd'hui"
-                  : isFuture ? new Date(n.date_cours + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'short' })
-                  : new Date(n.date_cours + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
-
-                return (
-                  <div key={n.id} className="flex items-start gap-3 px-4 py-3">
-                    <XCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-red-900">
-                          {n.subject_name}
-                          <span className="font-normal text-red-600 ml-1">
-                            · {n.heure_debut?.slice(0, 5)}–{n.heure_fin?.slice(0, 5)}
-                          </span>
-                        </p>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
-                          ${isToday ? 'bg-red-200 text-red-800'
-                          : isFuture ? 'bg-orange-100 text-orange-700'
-                          : 'bg-gray-100 text-gray-600'}`}>
-                          {dateLabel}
-                        </span>
-                      </div>
-                      <p className="text-xs text-red-600 mt-0.5">
-                        {n.class_name} · Prof. {n.prof_name}
-                        {n.motif && <span className="text-red-400"> · {n.motif}</span>}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => markAbsenceRead(n.id)}
-                      className="p-1 hover:bg-red-200 rounded-lg transition-colors shrink-0"
-                      title="Marquer comme lu"
-                    >
-                      <CheckCircle size={14} className="text-red-400" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        )}
-
-        {/* ── Bandeau notes en attente ── */}
-        {gradeNotifs.length > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-yellow-100 border-b border-yellow-200">
-              <div className="flex items-center gap-2">
-                <Clock size={16} className="text-yellow-600 shrink-0" />
-                <p className="text-sm font-bold text-yellow-800">
-                  {gradeNotifs.length} note(s) en attente de validation
-                </p>
-              </div>
-              <button
-                onClick={marquerToutesNotesLues}
-                className="text-xs text-yellow-700 font-semibold hover:text-yellow-900 transition-colors"
-              >
-                Tout marquer lu
-              </button>
-            </div>
-            <div className="divide-y divide-yellow-100 max-h-72 overflow-y-auto">
-              {gradeNotifs.map(n => (
-                <div key={`${n.gradeId}-${n.colonne}`} className="flex items-start gap-3 px-4 py-3">
-                  <AlertCircle size={16} className="text-yellow-400 mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-yellow-900">
-                      {n.eleve?.prenom} {n.eleve?.nom}
-                      <span className="font-normal text-yellow-600 ml-1">· {n.matiere} · {n.label}</span>
-                    </p>
+        ) : (
+          <>
+            {/* Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: 'Élèves',           value: stats.eleves,         icon: Users,         color: 'blue'   },
+                { label: 'Classes',          value: stats.classes,        icon: BookOpen,      color: 'purple' },
+                { label: 'Professeurs',      value: stats.profs,          icon: GraduationCap, color: 'green'  },
+                { label: 'Notes en attente', value: stats.notesEnAttente, icon: Clock,         color: 'amber'  },
+              ].map(({ label, value, icon: Icon, color }) => (
+                <Card key={label} className="p-4 flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center
+                    ${color === 'blue'   ? 'bg-blue-100'   : ''}
+                    ${color === 'purple' ? 'bg-purple-100' : ''}
+                    ${color === 'green'  ? 'bg-green-100'  : ''}
+                    ${color === 'amber'  ? 'bg-amber-100'  : ''}`}>
+                    <Icon size={18} className={`
+                      ${color === 'blue'   ? 'text-blue-600'   : ''}
+                      ${color === 'purple' ? 'text-purple-600' : ''}
+                      ${color === 'green'  ? 'text-green-600'  : ''}
+                      ${color === 'amber'  ? 'text-amber-600'  : ''}`} />
                   </div>
-                  <button
-                    onClick={() => marquerNoteLue(n.gradeId, n.colonne)}
-                    className="p-1 hover:bg-yellow-200 rounded-lg transition-colors shrink-0"
-                    title="Marquer comme lu"
-                  >
-                    <CheckCircle size={14} className="text-yellow-500" />
-                  </button>
-                </div>
+                  <div>
+                    <p className="text-2xl font-black text-gray-900">{value}</p>
+                    <p className="text-xs text-gray-400">{label}</p>
+                  </div>
+                </Card>
               ))}
             </div>
-          </div>
-        )}
 
-        {/* Actions rapides */}
-        <div>
-          <h2 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Actions rapides</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: 'Ajouter des élèves', icon: Users, to: '/admin/eleves' },
-              { label: 'Gérer les classes', icon: BookOpen, to: '/admin/classes' },
-              { label: 'Valider les notes', icon: CheckCircle, to: '/admin/notes' },
-              { label: 'Générer bulletins', icon: FileText, to: '/admin/bulletins' },
-            ].map(({ label, icon: Icon, to }) => (
-              <a key={to} href={to} className="card flex flex-col items-center gap-2 py-5 hover:shadow-md transition-shadow cursor-pointer text-center">
-                <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
-                  <Icon size={20} className="text-primary-600" />
+            {/* Notifications notes soumises */}
+            {gradeNotifs.length > 0 && (
+              <Card className="overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+                  <Bell size={16} className="text-amber-500" />
+                  <h2 className="font-bold text-gray-900">{gradeNotifs.length} note(s) en attente de validation</h2>
                 </div>
-                <span className="text-xs font-semibold text-gray-700">{label}</span>
-              </a>
-            ))}
-          </div>
-        </div>
+                <div className="divide-y divide-gray-50">
+                  {gradeNotifs.slice(0, 8).map((n, i) => (
+                    <div key={i} className="flex items-center gap-3 px-5 py-3">
+                      <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                        <Clock size={14} className="text-amber-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {n.eleve?.prenom} {n.eleve?.nom}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {n.matiere} · T{n.trimestre}
+                        </p>
+                      </div>
+                      <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-1 rounded-full">
+                        À valider
+                      </span>
+                    </div>
+                  ))}
+                  {gradeNotifs.length > 8 && (
+                    <div className="px-5 py-3 text-xs text-gray-400 text-center">
+                      + {gradeNotifs.length - 8} autres…
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+          </>
+        )}
       </div>
     </DashboardLayout>
   )

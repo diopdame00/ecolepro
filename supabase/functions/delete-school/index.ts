@@ -1,11 +1,13 @@
-// supabase/functions/delete-school/index.ts
-// Supprime une école et TOUTES ses données en cascade
+// ============================================================
+// Edge Function : delete-school v2.0
+// Supprime une école et TOUS ses utilisateurs auth
 // Deploy : supabase functions deploy delete-school
+// ============================================================
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
@@ -21,19 +23,21 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
+    // ── Vérifier superadmin ──────────────────────────────────
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) return json({ error: 'Authentification requise' }, 401)
 
-    // Vérifier superadmin
     const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } }
     )
+
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
     if (authError || !user) return json({ error: 'Non authentifié' }, 401)
 
-    const { data: profile } = await supabaseAuth.from('users').select('role').eq('id', user.id).single()
+    const { data: profile } = await supabaseAuth
+      .from('users').select('role').eq('id', user.id).single()
     if (profile?.role !== 'superadmin') return json({ error: 'Accès réservé au Super Admin' }, 403)
 
     const { school_id } = await req.json()
@@ -44,74 +48,63 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // Vérifier que l'école existe
-    const { data: school, error: schoolFetchErr } = await supabaseAdmin
-      .from('schools').select('id, name').eq('id', school_id).single()
-    if (schoolFetchErr || !school) return json({ error: 'École introuvable' }, 404)
-
-    // ── ÉTAPE 1 : Récupérer les IDs auth AVANT toute suppression ──
-    // C'est critique : on récupère les IDs pendant que public.users existe encore
-    const { data: usersToDelete } = await supabaseAdmin
+    // ── ÉTAPE 1 : Récupérer les IDs auth AVANT suppression ───
+    // (après suppression de la table users on perd ces IDs)
+    const { data: usersToDelete, error: fetchErr } = await supabaseAdmin
       .from('users')
-      .select('id')
+      .select('id, email, role')
       .eq('school_id', school_id)
 
-    const authUserIds: string[] = usersToDelete?.map(u => u.id) ?? []
+    if (fetchErr) {
+      console.error('Erreur récupération users:', fetchErr.message)
+    }
 
-    // ── ÉTAPE 2 : Supprimer les données métier en cascade ──
-    const tables = [
-      'grades',
-      'paiements',
-      'depenses',
-      'cours_effectues',
-      'emploi_du_temps',
-      'prof_classes',
-      'class_subjects',
-      'students',
-      'classes',
-      'salaires',
-    ]
+    const authUserIds = (usersToDelete || []).map((u: { id: string }) => u.id)
+    console.log(`Utilisateurs à supprimer : ${authUserIds.length}`)
 
-    for (const table of tables) {
-      const { error } = await supabaseAdmin.from(table).delete().eq('school_id', school_id)
-      // Ignorer les erreurs "table inexistante" (code 42P01)
-      if (error && error.code !== '42P01') {
-        console.error(`Erreur suppression ${table}:`, error.message)
+    // ── ÉTAPE 2 : Suppression cascade via fonction SQL ───────
+    // La FK ON DELETE CASCADE supprime automatiquement :
+    // academic_years → classes → enrollments → grades, payments, etc.
+    const { data: deleteResult, error: deleteErr } = await supabaseAdmin
+      .rpc('delete_school_cascade', { p_school_id: school_id })
+
+    if (deleteErr) {
+      return json({ error: `Erreur suppression école : ${deleteErr.message}` }, 500)
+    }
+
+    if (deleteResult?.error) {
+      return json({ error: deleteResult.error }, 404)
+    }
+
+    // ── ÉTAPE 3 : Supprimer les comptes auth.users ───────────
+    // APRÈS la suppression de la table users (évite les FK conflicts)
+    const authResults: { id: string; success: boolean; error?: string }[] = []
+
+    for (const uid of authUserIds) {
+      const { error: delAuthErr } = await supabaseAdmin.auth.admin.deleteUser(uid)
+      if (delAuthErr) {
+        console.error(`Erreur auth.users [${uid}]:`, delAuthErr.message)
+        authResults.push({ id: uid, success: false, error: delAuthErr.message })
+      } else {
+        authResults.push({ id: uid, success: true })
       }
     }
 
-    // ── ÉTAPE 3 : Supprimer les profils dans public.users ──
-    await supabaseAdmin.from('users').delete().eq('school_id', school_id)
-
-    // ── ÉTAPE 4 : Supprimer l'école elle-même ──
-    const { error: deleteEcoleErr } = await supabaseAdmin.from('schools').delete().eq('id', school_id)
-    if (deleteEcoleErr) return json({ error: 'Erreur suppression école : ' + deleteEcoleErr.message }, 500)
-
-    // ── ÉTAPE 5 : Supprimer les comptes auth.users EN DERNIER ──
-    // On fait ça après avoir supprimé public.users pour éviter les conflits de FK
-    const authDeleteResults = await Promise.allSettled(
-      authUserIds.map(uid => supabaseAdmin.auth.admin.deleteUser(uid))
-    )
-
-    // Logger les éventuels échecs sans bloquer la réponse
-    authDeleteResults.forEach((result, i) => {
-      if (result.status === 'rejected') {
-        console.error(`Échec suppression auth user ${authUserIds[i]}:`, result.reason)
-      } else if (result.value.error) {
-        console.error(`Erreur auth user ${authUserIds[i]}:`, result.value.error.message)
-      }
-    })
-
-    const deletedCount = authDeleteResults.filter(r => r.status === 'fulfilled' && !r.value.error).length
+    const failedDeletes = authResults.filter(r => !r.success)
 
     return json({
-      success: true,
-      message: `École "${school.name}" et toutes ses données supprimées.`,
-      auth_users_deleted: deletedCount,
-      auth_users_total: authUserIds.length,
+      success:      true,
+      school_name:  deleteResult.school_name,
+      message:      `École "${deleteResult.school_name}" supprimée`,
+      stats: {
+        users_found:         authUserIds.length,
+        auth_deleted:        authResults.filter(r => r.success).length,
+        auth_failed:         failedDeletes.length,
+        failed_ids:          failedDeletes.map(r => r.id),
+      },
     })
 
   } catch (err) {
-    return json({ error: err.message }, 500)
+    return json({ error: (err as Error).message }, 500)
   }
 })

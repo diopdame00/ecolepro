@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
@@ -6,7 +7,7 @@ import { Card, Button, Input, Modal } from '../../components/ui'
 import {
   Plus, Trash2, Save, Copy,
   BookOpen, GraduationCap,
-  Wallet, CheckCircle, Library
+  Wallet, CheckCircle, Library, CalendarDays
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -17,6 +18,7 @@ function extractNiveau(nomClasse) {
 
 export default function ConfigurationPage() {
   const { schoolId } = useAuth()
+  const navigate = useNavigate()
   const [classes, setClasses]             = useState([])
   const [subjects, setSubjects]           = useState([])
   const [selectedClass, setSelectedClass] = useState(null)
@@ -491,6 +493,27 @@ export default function ConfigurationPage() {
           </Card>
         )}
       </div>
+
+      {/* ── Bouton Nouvelle Année Scolaire ── */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+              <CalendarDays size={20} className="text-primary-600" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900">Transition annuelle</h2>
+              <p className="text-sm text-gray-500">
+                Démarrez une nouvelle année scolaire, promouvez les élèves et archivez l'année actuelle.
+              </p>
+            </div>
+          </div>
+          <Button onClick={() => navigate('/admin/nouvelle-annee')}>
+            <CalendarDays size={15} />
+            Nouvelle année scolaire
+          </Button>
+        </div>
+      </Card>
 
       {/* ── Modale assignation matière à la classe ── */}
       <Modal

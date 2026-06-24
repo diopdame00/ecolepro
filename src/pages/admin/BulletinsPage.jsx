@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useAnneeActive } from '../../hooks/useAnneeActive'
+import { SelecteurAnnee, BandeauArchive } from '../../components/shared/SelecteurAnnee'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, Button, Select, EmptyState } from '../../components/ui'
 import { genererBulletin, generateSinglePDF, generateBulkPDF } from '../../utils/bulletin'
@@ -29,6 +31,7 @@ function calculerMoy20(note) {
 
 export default function BulletinsPage() {
   const { schoolId, school } = useAuth()
+  const { annee, anneeActive, anneesDispos, anneeSelectionnee, setAnneeSelectionnee, enModeArchive } = useAnneeActive()
   const [classes, setClasses]                     = useState([])
   const [eleves, setEleves]                       = useState([])
   const [selectedClasse, setSelectedClasse]       = useState('')
@@ -37,12 +40,13 @@ export default function BulletinsPage() {
   const [generating, setGenerating]               = useState(null)
   const [classeData, setClasseData]               = useState(null)  // données complètes de la classe
 
-  useEffect(() => { if (schoolId) fetchClasses() }, [schoolId])
+  useEffect(() => { if (schoolId && annee) fetchClasses() }, [schoolId, annee])
   useEffect(() => { if (selectedClasse) fetchEleves() }, [selectedClasse, selectedTrimestre])
 
   async function fetchClasses() {
+    if (!annee) return
     const { data } = await supabase
-      .from('classes').select('*').eq('school_id', schoolId).order('nom')
+      .from('classes').select('*').eq('school_id', schoolId).eq('annee_scolaire', annee).order('nom')
     setClasses(data || [])
   }
 
@@ -288,6 +292,7 @@ export default function BulletinsPage() {
           <div>
             <h1 className="text-2xl font-black text-gray-900">Bulletins PDF</h1>
             <p className="text-gray-500 text-sm">Générez et téléchargez les bulletins</p>
+            <SelecteurAnnee anneeActive={anneeActive} anneesDispos={anneesDispos} anneeSelectionnee={anneeSelectionnee} setAnneeSelectionnee={setAnneeSelectionnee} className="mt-1" />
           </div>
           {eleves.length > 0 && (
             <Button onClick={genererTousLesBulletins}>
